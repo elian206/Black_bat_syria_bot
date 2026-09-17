@@ -2,7 +2,7 @@ import telebot
 from flask import Flask
 from threading import Thread
 
-TOKEN = '7684538975:AAHXbV-nNLG_GaFcJTcgXTQ-YifOSTxhbkl'
+TOKEN = '8909052904:AAHEsWa85CbV5Kwxs4Y1kG7h7TMtHpx-TMw'
 bot = telebot.TeleBot(TOKEN)
 
 ADMIN_ID = 697930035
@@ -28,4 +28,5 @@ def keep_alive():
 if __name__ == "__main__":
     keep_alive()
     bot.infinity_polling(skip_pending=True)
+
 
