@@ -151,7 +151,7 @@ def send_welcome(message):
     if user_id not in users_db:
         users_db[user_id] = {
             'name': message.from_user.first_name,
-            'balance': 10.0,
+            'balance': 0.0,
             'spent': 0.0,
             'orders_count': 0,
             'banned': False,
