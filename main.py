@@ -23,9 +23,8 @@ api_headers = {"api-token": API_TOKEN}
 
 users_db = {}
 total_orders_global = 142
-exchange_rate = 15000
+exchange_rate = 15000  # سعر الصرف الافتراضي
 
-# تعريف الأقسام والمنتجات المحدثة
 store_categories = {
     "🎮 شحن ألعاب": {
         "PUBG Mobile 🕹": {
@@ -83,19 +82,13 @@ admin_states = {}
 user_temp_order = {}
 bot_is_active = True
 
-def get_mhd_products():
-    try:
-        url = f"{API_BASE}/client/api/products"
-        response = requests.get(url, headers=api_headers)
-        if response.status_code == 200:
-            data = response.json()
-            if isinstance(data, list):
-                return data
-            elif isinstance(data, dict):
-                return data.get('data', data.get('products', []))
-    except Exception as e:
-        print(f"Error fetching products: {e}")
-    return None
+def format_price(user_id, price_in_usd):
+    curr = users_db.get(user_id, {}).get('currency', 'USD')
+    if curr == 'SYP':
+        syp_amount = price_in_usd * exchange_rate
+        return f"{syp_amount:,.0f} ل.س"
+    else:
+        return f"${price_in_usd}"
 
 def create_mhd_order(product_id, quantity, player_id):
     try:
@@ -351,7 +344,7 @@ def handle_callbacks(call):
         markup_pubg.add(types.InlineKeyboardButton("سيرفر 2 🆔", callback_data="pubg_srv2"))
         markup_pubg.add(types.InlineKeyboardButton("اكواد 📱", callback_data="pubg_codes"))
         markup_pubg.add(types.InlineKeyboardButton("عضويات 💳", callback_data="pubg_mems"))
-        bot.send_message(call.message.chat.id, "اختر القسم المناسب لـ PUBG Mobile ⏬", reply_markup=markup_pubg)
+        bot.send_message(call.message.chat.id, "اختر القسم المناسب لـ PUBG Mobile 🕹", reply_markup=markup_pubg)
         return
 
     elif data in ["pubg_srv1", "pubg_srv2", "pubg_codes", "pubg_mems"]:
@@ -367,7 +360,8 @@ def handle_callbacks(call):
         
         markup_prods = types.InlineKeyboardMarkup()
         for p in products_list:
-            markup_prods.add(types.InlineKeyboardButton(f"{p['name']} - ${p['price']}", callback_data=f"buyprod_{p['id']}"))
+            formatted_p_price = format_price(user_id, p['price'])
+            markup_prods.add(types.InlineKeyboardButton(f"{p['name']} - {formatted_p_price}", callback_data=f"buyprod_{p['id']}"))
         
         bot.send_message(call.message.chat.id, f"📦 منتجات {sub_name}:", reply_markup=markup_prods)
         return
@@ -403,12 +397,15 @@ def handle_callbacks(call):
             "price": p_price
         }
 
+        formatted_price = format_price(user_id, p_price)
+        formatted_balance = format_price(user_id, user_balance)
+
         bot.answer_callback_query(call.id)
         bot.send_message(
             call.message.chat.id,
             f"🔹 **اسم الخدمة:** {selected_prod['name']}\n"
-            f"💵 **سعر الخدمة:** ${p_price}\n"
-            f"💰 **رصيدك بالبوت:** ${user_balance}\n\n"
+            f"💵 **سعر الخدمة:** {formatted_price}\n"
+            f"💰 **رصيدك بالبوت:** {formatted_balance}\n\n"
             f"الرجاء إرسال **آيدي حسابه (Player ID)** في رسالة الآن ⏬",
             parse_mode="Markdown"
         )
@@ -499,6 +496,8 @@ def process_player_id(message):
     p_name = user_temp_order[user_id]['product_name']
     p_price = user_temp_order[user_id]['price']
 
+    formatted_price = format_price(user_id, p_price)
+
     markup_conf = types.InlineKeyboardMarkup()
     markup_conf.add(
         types.InlineKeyboardButton("نعم ✅", callback_data="confirm_order_yes"),
@@ -509,7 +508,7 @@ def process_player_id(message):
         message.chat.id,
         f"📋 **ملخص الطلب:**\n"
         f"▫️ الخدمة: {p_name}\n"
-        f"▫️ السعر: ${p_price}\n"
+        f"▫️ السعر: {formatted_price}\n"
         f"▫️ الآيدي: `{player_id}`\n\n"
         f"❓ **تريد اكمال طلبك؟**",
         parse_mode="Markdown",
