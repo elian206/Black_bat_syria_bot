@@ -15,7 +15,7 @@ except Exception:
     pass
 
 ADMIN_ID = 8534087775
-ADMIN_USERNAME = "black1_bat_syria" # ضع معرف حساب الأدمن هنا بدون @ أو اترك المعرف الخاص بك
+ADMIN_USERNAME = "black_bat_s" # تم تحديث معرف الدعم ليصبح حسابك المطلوب
 CHANNEL_USERNAME = '@black1_bat_syria'
 
 API_BASE = "https://mhd-game.com/api"
@@ -202,7 +202,7 @@ def show_main_menu(chat_id, user_name, user_id):
     btn1 = types.KeyboardButton('🛍 خدمات متجرنا')
     btn2 = types.KeyboardButton('👤 حسابك')
     btn3 = types.KeyboardButton('💳 تعبئة رصيد')
-    btn_support = types.KeyboardButton('📞 الدعم') # زر الدعم المضاف حديثاً
+    btn_support = types.KeyboardButton('📞 الدعم') 
     btn_curr = types.KeyboardButton(curr_btn_text)
     
     if chat_id == ADMIN_ID:
