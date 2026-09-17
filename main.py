@@ -781,7 +781,7 @@ def process_player_id(message):
         users_db[user_id]['spent'] -= price
         users_db[user_id]['orders'] -= 1
         
-        `err_msg` = response.get("message", "خطأ غير معروف") if response else "فشل الاتصال بالموقع"
+        err_msg = response.get("message", "خطأ غير معروف") if response else "فشل الاتصال بالموقع"
         bot.send_message(message.chat.id, f"❌ **فشل تنفيذ الطلب من الموقع:**\n{err_msg}\n\n💰 تم إرجاع المبلغ إلى رصيدك.", parse_mode="Markdown")
 
     del user_temp_order[user_id]
