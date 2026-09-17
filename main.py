@@ -18,8 +18,8 @@ users_db = {}
 total_orders_global = 142
 exchange_rate = 15000
 
-# قاموس مؤقت لحفظ حالات تعبئة الرصيد للمستخدمين
 pending_topup = {}
+admin_states = {}
 
 def check_subscription(user_id):
     try:
@@ -104,12 +104,31 @@ def verify_sub(call):
 
 @bot.message_handler(func=lambda message: True)
 def handle_text_messages(message):
+    global exchange_rate
     user_id = message.from_user.id
     
     if user_id in users_db and users_db[user_id]['banned']:
         return
 
-    # معالجة إدخال المبلغ ورقم العملية لعملية التعبئة
+    if user_id == ADMIN_ID and admin_states.get('state') == 'waiting_new_rate':
+        text = message.text.strip()
+        try:
+            import re
+            numbers = re.findall(r'\d+', text)
+            if numbers:
+                new_rate = int(''.join(numbers))
+                exchange_rate = new_rate
+                admin_states.clear()
+                bot.reply_to(message, f"✅ تم تحديث سعر الصرف بنجاح!\nسعر الصرف الجديد: {exchange_rate:,} ل.س لكل 1$")
+                show_admin_panel(message)
+                return
+            else:
+                bot.reply_to(message, "⚠️ يرجى إرسال رقم صحيح لسعر الصرف.")
+                return
+        except Exception:
+            bot.reply_to(message, "⚠️ حدث خطأ، يرجى إرسال رقم صحيح.")
+            return
+
     if user_id in pending_topup:
         state = pending_topup[user_id].get('state')
         
@@ -127,10 +146,8 @@ def handle_text_messages(message):
             u_name = users_db.get(user_id, {}).get('name', message.from_user.first_name)
             amount = pending_topup[user_id]['amount']
             
-            # إرسال رسالة للمستخدم
             bot.reply_to(message, "تم استلام طلب تعبئة رصيدك ستوافق عليها الإدارة ✅")
             
-            # إرسال إشعار للأدمن مع زري الموافقة والرفض
             admin_msg = (
                 f"📌 طلب تعبئة رصيد جديد:\n\n"
                 f"📌 اسم المستخدم: {u_name}\n"
@@ -140,15 +157,12 @@ def handle_text_messages(message):
             )
             
             markup_admin_approval = types.InlineKeyboardMarkup()
-            # نخزن في الـ callback_data ايدي المستخدم والمبلغ لتسهيل إعطاء الرصيد
             markup_admin_approval.add(
                 types.InlineKeyboardButton('✅ موافق', callback_data=f'approve_topup_{user_id}_{amount}'),
                 types.InlineKeyboardButton('❌ غير موافق', callback_data=f'reject_topup_{user_id}')
             )
             
             bot.send_message(ADMIN_ID, admin_msg, parse_mode='Markdown', reply_markup=markup_admin_approval)
-            
-            # حذف الحالة المؤقتة
             del pending_topup[user_id]
             return
 
@@ -218,7 +232,7 @@ def show_topup_methods(message):
     bot.reply_to(message, "💳 اختر طريقة تعبئة الرصيد المفضلة لديك:", reply_markup=markup_topup)
 
 def show_admin_panel(message):
-    admin_text = f"⚙️ **لوحة تحكم الأدمن الرئيسية:**\nسعر الصرف الحالي: {exchange_rate} ل.س لكل 1$\nاختر العملية المطلوبة:"
+    admin_text = f"⚙️ **لوحة تحكم الأدمن الرئيسية:**\nسعر الصرف الحالي: {exchange_rate:,} ل.س لكل 1$\nاختر العملية المطلوبة:"
     markup_admin = types.InlineKeyboardMarkup()
     markup_admin.add(types.InlineKeyboardButton('➕ اضافة رصيد يدوي', callback_data='adm_add_balance'))
     markup_admin.add(types.InlineKeyboardButton('➖ خصم رصيد يدوي', callback_data='adm_sub_balance'))
@@ -251,7 +265,6 @@ def handle_callbacks(call):
             f"اسم الحساب: جورج عيسى بركات."
         )
         bot.send_message(call.message.chat.id, sham_msg)
-        # تفعيل حالة انتظار المبلغ من العميل
         pending_topup[user_id] = {'state': 'waiting_amount'}
         bot.send_message(call.message.chat.id, "ادخل المبلغ الذي أرسلته ⏬")
 
@@ -264,28 +277,23 @@ def handle_callbacks(call):
         target_user_id = int(parts[2])
         amount_str = parts[3]
         
-        # محاولة استخراج رقم أو قيمة لإضافتها للرصيد
         try:
-            # استخراج الأرقام من نص المبلغ لو وُجدت رموز مثل $ أو ل.س
             import re
             numbers = re.findall(r'\d+\.?\d*', amount_str)
             added_amount = float(numbers[0]) if numbers else 0.0
         except Exception:
             added_amount = 0.0
 
-        # تحديث رصيد المستخدم
         if target_user_id in users_db:
             users_db[target_user_id]['balance'] += added_amount
             total_bal = users_db[target_user_id]['balance']
         else:
-            # افتراض بيانات أولية لو لم يكن مسجلاً بقاموس البيانات
             users_db[target_user_id] = {'name': 'مستخدم', 'balance': added_amount, 'spent': 0.0, 'orders': 0, 'banned': False, 'currency': 'USD'}
             total_bal = added_amount
 
         bot.answer_callback_query(call.id, "تمت الموافقة وإضافة الرصيد بنجاح!")
         bot.edit_message_text(f"{call.message.text}\n\n✅ **الحالة:** تم قبول الطلب من قبل الأدمن.", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode='Markdown')
         
-        # إرسال رسالة للعميل
         try:
             client_msg = (
                 f"تم اضافة المبلغ: {amount_str}\n"
@@ -334,6 +342,12 @@ def handle_callbacks(call):
             bot.answer_callback_query(call.id, "هذا الزر مخصص للأدمن فقط!", show_alert=True)
             return
         
+        if data == 'adm_exchange_rate':
+            admin_states['state'] = 'waiting_new_rate'
+            bot.answer_callback_query(call.id)
+            bot.send_message(call.message.chat.id, f"💱 سعر الصرف الحالي هو: {exchange_rate:,} ل.س.\n\nأرسل سعر الصرف الجديد الآن كأرقام فقط ⏬")
+            return
+
         actions_map = {
             'adm_add_balance': "أرسل المعرف والآيدي والمبلغ لإضافة الرصيد يدويًا.",
             'adm_sub_balance': "أرسل المعرف والآيدي والمبلغ لخصم الرصيد يدويًا.",
@@ -344,7 +358,6 @@ def handle_callbacks(call):
             'adm_add_admin': "أرسل آيدي المستخدم الجديد لتعيينه كأدمن.",
             'adm_change_link': "أرسل رابط الموقع أو المنصة البديل للربط.",
             'adm_broadcast': "أرسل النص المراد بثه وإرساله لجميع العملاء داخل البوت.",
-            'adm_exchange_rate': f"سعر الصرف الحالي هو: {exchange_rate} ل.س.",
             'adm_ban': "أرسل آيدي المستخدم المراد حظره.",
             'adm_unban': "أرسل آيدي المستخدم المراد فك الحظر عنه."
         }
