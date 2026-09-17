@@ -285,8 +285,25 @@ def handle_text_messages(message):
     if user_id in pending_topup:
         state = pending_topup[user_id].get('state')
         if state == 'waiting_amount':
+            try:
+                val = float(message.text.strip())
+            except ValueError:
+                bot.reply_to(message, "⚠️ يرجى إرسال رقم صالح فقط.")
+                return
+
+            min_limit = pending_topup[user_id]['min_limit']
+            if val < min_limit:
+                bot.reply_to(message, f"⚠️ عذراً، الحد الأدنى للإيداع لهذه الطريقة هو {min_limit} {'ل.س' if min_limit > 1 else '$'}. يرجى إدخال مبلغ أكبر:")
+                return
+
             pending_topup[user_id]['amount'] = message.text.strip()
             pending_topup[user_id]['state'] = 'waiting_operation_id'
+            bot.reply_to(message, "الرجاء إرسال **رقم العملية (رقم التحويل)** الآن ⏬", parse_mode='Markdown')
+            return
+            
+        elif state == 'waiting_operation_id':
+            op_id = message.text.strip()
+            pending_topup[user_id]['op_id'] = op_id
             
             markup_confirm_topup = types.InlineKeyboardMarkup()
             markup_confirm_topup.add(
@@ -294,31 +311,6 @@ def handle_text_messages(message):
                 types.InlineKeyboardButton('لا ❌', callback_data='topup_confirm_no')
             )
             bot.reply_to(message, "ارسل رقم العملة (رقم العملية) ولتأكيد الطلب اضغط الزر المناسب:", reply_markup=markup_confirm_topup)
-            return
-            
-        elif state == 'waiting_operation_id':
-            op_id = message.text.strip()
-            pending_topup[user_id]['op_id'] = op_id
-            u_name = users_db.get(user_id, {}).get('name', message.from_user.first_name)
-            amount = pending_topup[user_id]['amount']
-            curr_type = pending_topup[user_id]['curr_type']
-            method_name = pending_topup[user_id]['method_name']
-            
-            bot.reply_to(message, "تم استلام طلب تعبئة رصيدك ستوافق عليها الإدارة ✅")
-            admin_msg = (
-                f"📌 طلب تعبئة رصيد جديد ({method_name}):\n\n"
-                f"📌 اسم المستخدم: {u_name}\n"
-                f"📌 ايدي التلغرام: `{user_id}`\n"
-                f"📌 المبلغ: {amount} {'$' if curr_type=='USD' else 'ل.س'}\n"
-                f"📌 رقم العملية: {op_id}"
-            )
-            markup_app = types.InlineKeyboardMarkup()
-            markup_app.add(
-                types.InlineKeyboardButton('✅ موافق', callback_data=f'approve_topup_{user_id}_{amount}_{curr_type}'),
-                types.InlineKeyboardButton('❌ غير موافق', callback_data=f'reject_topup_{user_id}')
-            )
-            bot.send_message(ADMIN_ID, admin_msg, parse_mode='Markdown', reply_markup=markup_app)
-            del pending_topup[user_id]
             return
 
     if '💱 العملة:' in message.text:
@@ -537,18 +529,16 @@ def handle_callbacks(call):
 
     elif data in ['pay_sham_usd', 'pay_sham_syp', 'pay_syriatel', 'pay_mtn']:
         bot.answer_callback_query(call.id)
-        curr_type = 'USD' if data == 'pay_sham_usd' else 'SYP'
-        
         if data == 'pay_sham_usd':
-            m_name, details_msg = 'Sham Cash (دولار)', "🟩 **تحويل Sham Cash (دولار 💵)**\n\nحساب التحويل:\n`ebae7d2aa7d10e62f02b1199d87208f4`\nاسم الحساب: جورج عيسى بركات.\n\nالرجاء إرسال **المبلغ المراد تعبئته** الآن ⏬"
+            m_name, curr_type, min_limit, details_msg = 'Sham Cash (دولار)', 'USD', 1, "🟩 **تحويل Sham Cash (دولار 💵)**\n\nالحد الأدنى للإيداع: 1$\nحساب التحويل:\n`ebae7d2aa7d10e62f02b1199d87208f4`\nاسم الحساب: جورج عيسى بركات.\n\nالرجاء إرسال **المبلغ المراد تعبئته** الآن ⏬"
         elif data == 'pay_sham_syp':
-            m_name, details_msg = 'Sham Cash (ليرة سورية)', f"🟩 **تحويل Sham Cash ليرة سورية 🇸🇾**\n\nكل 1$ = {exchange_rate:,} ل.س\nالحساب: `ebae7d2aa7d10e62f02b1199d87208f4`\nاسم الحساب: جورج عيسى بركات.\n\nالرجاء إرسال **المبلغ المراد تعبئته** الآن ⏬"
+            m_name, curr_type, min_limit, details_msg = 'Sham Cash (ليرة سورية)', 'SYP', 50, f"🟩 **تحويل Sham Cash ليرة سورية 🇸🇾**\n\nالحد الأدنى للإيداع: 50 ل.س\nكل 1$ = {exchange_rate:,} ل.س\nالحساب: `ebae7d2aa7d10e62f02b1199d87208f4`\nاسم الحساب: جورج عيسى بركات.\n\nالرجاء إرسال **المبلغ المراد تعبئته** الآن ⏬"
         elif data == 'pay_syriatel':
-            m_name, details_msg = 'Syriatel Cash', f"🟥 **تحويل Syriatel Cash 🇸🇾**\n\nكل 1$ = {exchange_rate:,} ل.س\nكود تحويل ⏪ `92189062`\n\nالرجاء إرسال **المبلغ المراد تعبئته** الآن ⏬"
+            m_name, curr_type, min_limit, details_msg = 'Syriatel Cash', 'SYP', 80, f"🟥 **تحويل Syriatel Cash 🇸🇾**\n\nالحد الأدنى للإيداع: 80 ل.س\nكل 1$ = {exchange_rate:,} ل.س\nكود تحويل ⏪ `92189062`\n\nالرجاء إرسال **المبلغ المراد تعبئته** الآن ⏬"
         else:
-            m_name, details_msg = 'MTN Cash', f"🟨 **تحويل MTN Cash 🇸🇾**\n\nكل 1$ = {exchange_rate:,} ل.س\nكود التحويل ⏬\n`8338 3112 0672 4992`\n\nالرجاء إرسال **المبلغ المراد تعبئته** الآن ⏬"
+            m_name, curr_type, min_limit, details_msg = 'MTN Cash', 'SYP', 100, f"🟨 **تحويل MTN Cash 🇸🇾**\n\nالحد الأدنى للإيداع: 100 ل.س\nكل 1$ = {exchange_rate:,} ل.س\nكود التحويل ⏬\n`8338 3112 0672 4992`\n\nالرجاء إرسال **المبلغ المراد تعبئته** الآن ⏬"
 
-        pending_topup[user_id] = {'method_name': m_name, 'curr_type': curr_type, 'state': 'waiting_amount'}
+        pending_topup[user_id] = {'method_name': m_name, 'curr_type': curr_type, 'min_limit': min_limit, 'state': 'waiting_amount'}
         bot.send_message(call.message.chat.id, details_msg, parse_mode='Markdown')
         return
 
@@ -556,8 +546,30 @@ def handle_callbacks(call):
         if user_id not in pending_topup:
             bot.answer_callback_query(call.id, "انتهت الجلسة.", show_alert=True)
             return
-        bot.answer_callback_query(call.id, "تم التأكيد، يرجى إرسال رقم العملية الآن:")
-        bot.edit_message_text("أرسل الآن **رقم العملية (رقم التحويل)** في رسالة:", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode='Markdown')
+        
+        u_name = users_db.get(user_id, {}).get('name', call.from_user.first_name)
+        amount = pending_topup[user_id]['amount']
+        curr_type = pending_topup[user_id]['curr_type']
+        method_name = pending_topup[user_id]['method_name']
+        op_id = pending_topup[user_id]['op_id']
+
+        bot.answer_callback_query(call.id, "تم استلام طلب تعبئة رصيدك ستوافق عليها الإدارة ✅")
+        bot.edit_message_text("تم استلام طلب تعبئة رصيدك ستوافق عليها الإدارة ✅", chat_id=call.message.chat.id, message_id=call.message.message_id)
+
+        admin_msg = (
+            f"📌 طلب تعبئة رصيد جديد ({method_name}):\n\n"
+            f"📌 اسم المستخدم: {u_name}\n"
+            f"📌 ايدي التلغرام: `{user_id}`\n"
+            f"📌 المبلغ: {amount} {'$' if curr_type=='USD' else 'ل.س'}\n"
+            f"📌 رقم العملية: {op_id}"
+        )
+        markup_app = types.InlineKeyboardMarkup()
+        markup_app.add(
+            types.InlineKeyboardButton('✅ موافق', callback_data=f'approve_topup_{user_id}_{amount}_{curr_type}'),
+            types.InlineKeyboardButton('❌ غير موافق', callback_data=f'reject_topup_{user_id}')
+        )
+        bot.send_message(ADMIN_ID, admin_msg, parse_mode='Markdown', reply_markup=markup_app)
+        del pending_topup[user_id]
         return
 
     elif data == 'topup_confirm_no':
@@ -588,8 +600,8 @@ def handle_callbacks(call):
         markup_pubg.add(types.InlineKeyboardButton("اكواد 📱", callback_data="pubg_codes"))
         markup_pubg.add(types.InlineKeyboardButton("عضويات 💳", callback_data="pubg_mems"))
         
-        # إرسال صورة ببجي عند الدخول لزر ببجي
-        pubg_image_url = "https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800"
+        # صورة أيقونة ببجي مخصصة
+        pubg_image_url = "https://w7.pngwing.com/pngs/303/305/png-transparent-pubg-mobile-hd-logo-thumbnail.png"
         try:
             bot.send_photo(
                 call.message.chat.id, 
