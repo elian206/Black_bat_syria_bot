@@ -110,24 +110,106 @@ def handle_text_messages(message):
     if user_id in users_db and users_db[user_id]['banned']:
         return
 
-    if user_id == ADMIN_ID and admin_states.get('state') == 'waiting_new_rate':
-        text = message.text.strip()
-        try:
-            import re
-            numbers = re.findall(r'\d+', text)
-            if numbers:
-                new_rate = int(''.join(numbers))
-                exchange_rate = new_rate
+    # معالجة حالات الأدمن (تغيير سعر الصرف، إضافة رصيد، خصم رصيد)
+    if user_id == ADMIN_ID:
+        admin_st = admin_states.get('state')
+        
+        if admin_st == 'waiting_new_rate':
+            text = message.text.strip()
+            try:
+                import re
+                numbers = re.findall(r'\d+', text)
+                if numbers:
+                    new_rate = int(''.join(numbers))
+                    exchange_rate = new_rate
+                    admin_states.clear()
+                    bot.reply_to(message, f"✅ تم تحديث سعر الصرف بنجاح!\nسعر الصرف الجديد: {exchange_rate:,} ل.س لكل 1$")
+                    show_admin_panel(message)
+                    return
+            except Exception:
+                pass
+            bot.reply_to(message, "⚠️ يرجى إرسال رقم صحيح لسعر الصرف.")
+            return
+
+        elif admin_st == 'waiting_add_id':
+            text = message.text.strip()
+            try:
+                target_id = int(text)
+                admin_states['target_id'] = target_id
+                admin_states['state'] = 'waiting_add_amount'
+                bot.reply_to(message, "ارسل المبلغ المراد إضافته ⏬")
+                return
+            except Exception:
+                bot.reply_to(message, "⚠️ يرجى إرسال ايدي (ID) صحيح كأرقام.")
+                return
+
+        elif admin_st == 'waiting_add_amount':
+            text = message.text.strip()
+            try:
+                import re
+                numbers = re.findall(r'\d+\.?\d*', text)
+                amount = float(numbers[0]) if numbers else 0.0
+                target_id = admin_states.get('target_id')
+                
+                if target_id not in users_db:
+                    users_db[target_id] = {'name': 'مستخدم', 'balance': 0.0, 'spent': 0.0, 'orders': 0, 'banned': False, 'currency': 'USD'}
+                
+                users_db[target_id]['balance'] += amount
+                current_bal = users_db[target_id]['balance']
+                
                 admin_states.clear()
-                bot.reply_to(message, f"✅ تم تحديث سعر الصرف بنجاح!\nسعر الصرف الجديد: {exchange_rate:,} ل.س لكل 1$")
+                bot.reply_to(message, f"✅ تمت إضافة المبلغ ({amount}) بنجاح للمستخدم `{target_id}`.\nرصيده الحالي: {current_bal} $", parse_mode='Markdown')
+                
+                try:
+                    bot.send_message(target_id, f"تم اضافة المبلغ: {amount} $\nرصيدك الان: {current_bal} $\nاستمتع بطلب من خدماتنا")
+                except Exception:
+                    pass
+                
                 show_admin_panel(message)
                 return
-            else:
-                bot.reply_to(message, "⚠️ يرجى إرسال رقم صحيح لسعر الصرف.")
+            except Exception:
+                bot.reply_to(message, "⚠️ يرجى إرسال مبلغ صحيح.")
                 return
-        except Exception:
-            bot.reply_to(message, "⚠️ حدث خطأ، يرجى إرسال رقم صحيح.")
-            return
+
+        elif admin_st == 'waiting_sub_id':
+            text = message.text.strip()
+            try:
+                target_id = int(text)
+                admin_states['target_id'] = target_id
+                admin_states['state'] = 'waiting_sub_amount'
+                bot.reply_to(message, "ارسل المبلغ المراد خصمه ⏬")
+                return
+            except Exception:
+                bot.reply_to(message, "⚠️ يرجى إرسال ايدي (ID) صحيح كأرقام.")
+                return
+
+        elif admin_st == 'waiting_sub_amount':
+            text = message.text.strip()
+            try:
+                import re
+                numbers = re.findall(r'\d+\.?\d*', text)
+                amount = float(numbers[0]) if numbers else 0.0
+                target_id = admin_states.get('target_id')
+                
+                if target_id not in users_db:
+                    users_db[target_id] = {'name': 'مستخدم', 'balance': 0.0, 'spent': 0.0, 'orders': 0, 'banned': False, 'currency': 'USD'}
+                
+                users_db[target_id]['balance'] -= amount
+                current_bal = users_db[target_id]['balance']
+                
+                admin_states.clear()
+                bot.reply_to(message, f"✅ تم خصم المبلغ ({amount}) بنجاح من المستخدم `{target_id}`.\nرصيده الحالي: {current_bal} $", parse_mode='Markdown')
+                
+                try:
+                    bot.send_message(target_id, f"تم خصم مبلغ {amount} $ من رصيدك.\nرصيدك الان: {current_bal} $")
+                except Exception:
+                    pass
+                
+                show_admin_panel(message)
+                return
+            except Exception:
+                bot.reply_to(message, "⚠️ يرجى إرسال مبلغ صحيح.")
+                return
 
     if user_id in pending_topup:
         state = pending_topup[user_id].get('state')
@@ -347,10 +429,20 @@ def handle_callbacks(call):
             bot.answer_callback_query(call.id)
             bot.send_message(call.message.chat.id, f"💱 سعر الصرف الحالي هو: {exchange_rate:,} ل.س.\n\nأرسل سعر الصرف الجديد الآن كأرقام فقط ⏬")
             return
+            
+        elif data == 'adm_add_balance':
+            admin_states['state'] = 'waiting_add_id'
+            bot.answer_callback_query(call.id)
+            bot.send_message(call.message.chat.id, "أرسل ايدي (ID) العميل المراد إضافة الرصيد له ⏬")
+            return
+            
+        elif data == 'adm_sub_balance':
+            admin_states['state'] = 'waiting_sub_id'
+            bot.answer_callback_query(call.id)
+            bot.send_message(call.message.chat.id, "أرسل ايدي (ID) العميل المراد خصم الرصيد منه ⏬")
+            return
 
         actions_map = {
-            'adm_add_balance': "أرسل المعرف والآيدي والمبلغ لإضافة الرصيد يدويًا.",
-            'adm_sub_balance': "أرسل المعرف والآيدي والمبلغ لخصم الرصيد يدويًا.",
             'adm_add_btn': "أدخل تفاصيل الزر الجديد المراد إضافته.",
             'adm_del_btn': "اختر الزر المراد حذفه من القوائم.",
             'adm_pay_methods': "إدارة وتعديل طرق تعبئة الرصيد المتاحة.",
