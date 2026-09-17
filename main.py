@@ -22,7 +22,7 @@ API_TOKEN = "Fluf9aJYBrtQ1a9ywuqrcMh2M4A8UIa8MKsgbyUk0PkYi301WuCqtLtGn4GO"
 api_headers = {"api-token": API_TOKEN}
 
 users_db = {}
-total_orders_global = 142
+total_orders_global = 0  # تم تعيين العداد الكلي ليبدأ من الصفر تماماً
 exchange_rate = 15000  # سعر الصرف الافتراضي
 
 store_categories = {
@@ -148,6 +148,7 @@ def send_welcome(message):
     if not bot_is_active and user_id != ADMIN_ID:
         return
 
+    # الرصيد يبدأ من الصفر للعميل الجديد
     if user_id not in users_db:
         users_db[user_id] = {
             'name': message.from_user.first_name,
@@ -177,6 +178,7 @@ def send_welcome(message):
     show_main_menu(message.chat.id, message.from_user.first_name, user_id)
 
 def show_main_menu(chat_id, user_name, user_id):
+    global total_orders_global
     current_curr = users_db.get(user_id, {}).get('currency', 'USD')
     curr_btn_text = '💱 العملة: دولار ($)' if current_curr == 'USD' else '💱 العملة: ليرة سورية (ل.س)'
 
@@ -224,7 +226,7 @@ def verify_sub(call):
 
 @bot.message_handler(func=lambda message: True)
 def handle_text_messages(message):
-    global exchange_rate, bot_is_active
+    global exchange_rate, bot_is_active, total_orders_global
     user_id = message.from_user.id
     
     if not bot_is_active and user_id != ADMIN_ID:
@@ -392,6 +394,9 @@ def handle_text_messages(message):
     elif message.text == '⚙️ لوحة تحكم الأدمن' and user_id == ADMIN_ID:
         show_admin_panel(message)
 
+    elif message.text.startswith('📊 الطلبات المنفذة:'):
+        bot.reply_to(message, f"📊 إجمالي عدد الطلبات المنفذة لجميع العملاء في المتجر حالياً هو: `{total_orders_global}` طلب.", parse_mode='Markdown')
+
 def show_topup_methods(message):
     markup_topup = types.InlineKeyboardMarkup()
     markup_topup.add(types.InlineKeyboardButton('🟩 Sham Cash (تحويل دولار 💵)', callback_data='pay_sham_usd'))
@@ -405,9 +410,9 @@ def show_topup_methods(message):
         bot.send_message(message.message.chat.id, "💳 اختر طريقة تعبئة الرصيد المفضلة لديك:", reply_markup=markup_topup)
 
 def show_admin_panel(message):
-    global bot_is_active
+    global bot_is_active, total_orders_global
     status_text = "🟢 حالة البوت: يعمل" if bot_is_active else "🔴 حالة البوت: متوقف"
-    admin_text = f"⚙️ **لوحة تحكم الأدمن:**\n{status_text}\nسعر الصرف الحالي: {exchange_rate:,} ل.س"
+    admin_text = f"⚙️ **لوحة تحكم الأدمن:**\n{status_text}\nسعر الصرف الحالي: {exchange_rate:,} ل.س\nإجمالي الطلبات الكلي: {total_orders_global}"
     
     markup_admin = types.InlineKeyboardMarkup()
     markup_admin.add(types.InlineKeyboardButton('💱 تغيير سعر الصرف', callback_data='adm_exchange_rate'))
@@ -425,7 +430,7 @@ def show_admin_panel(message):
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
-    global bot_is_active, exchange_rate
+    global bot_is_active, exchange_rate, total_orders_global
     data = call.data
     user_id = call.from_user.id
     
@@ -718,6 +723,9 @@ def handle_callbacks(call):
                     "is_code": True
                 })
                 
+                # زيادة العداد الكلي بنجاح
+                total_orders_global += 1
+                
                 bot.send_message(
                     call.message.chat.id, 
                     f"✅ **تم شراء الكود بنجاح!**\n\n"
@@ -822,6 +830,10 @@ def handle_callbacks(call):
                     "status": "قيد التنفيذ",
                     "is_code": False
                 })
+                
+                # زيادة العداد الكلي بنجاح
+                total_orders_global += 1
+                
                 bot.send_message(call.message.chat.id, "✅ تم تنفيذ طلبك بنجاح، شكرا للتعامل معنا 🤝")
             else:
                 users_db[user_id]['balance'] += price
