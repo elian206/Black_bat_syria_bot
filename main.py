@@ -110,7 +110,6 @@ def handle_text_messages(message):
     if user_id in users_db and users_db[user_id]['banned']:
         return
 
-    # معالجة حالات الأدمن (تغيير سعر الصرف، إضافة رصيد، خصم رصيد)
     if user_id == ADMIN_ID:
         admin_st = admin_states.get('state')
         
@@ -158,10 +157,10 @@ def handle_text_messages(message):
                 current_bal = users_db[target_id]['balance']
                 
                 admin_states.clear()
-                bot.reply_to(message, f"✅ تمت إضافة المبلغ ({amount}) بنجاح للمستخدم `{target_id}`.\nرصيده الحالي: {current_bal} $", parse_mode='Markdown')
+                bot.reply_to(message, f"✅ تمت إضافة المبلغ ({amount}) بنجاح للمستخدم `{target_id}`.\nرصيده الحالي: {current_bal}", parse_mode='Markdown')
                 
                 try:
-                    bot.send_message(target_id, f"تم اضافة المبلغ: {amount} $\nرصيدك الان: {current_bal} $\nاستمتع بطلب من خدماتنا")
+                    bot.send_message(target_id, f"تم اضافة المبلغ: {amount}\nرصيدك الحالي: {current_bal}\nاستمتع بطلب من خدماتنا")
                 except Exception:
                     pass
                 
@@ -198,10 +197,10 @@ def handle_text_messages(message):
                 current_bal = users_db[target_id]['balance']
                 
                 admin_states.clear()
-                bot.reply_to(message, f"✅ تم خصم المبلغ ({amount}) بنجاح من المستخدم `{target_id}`.\nرصيده الحالي: {current_bal} $", parse_mode='Markdown')
+                bot.reply_to(message, f"✅ تم خصم المبلغ ({amount}) بنجاح من المستخدم `{target_id}`.\nرصيده الحالي: {current_bal}", parse_mode='Markdown')
                 
                 try:
-                    bot.send_message(target_id, f"تم خصم مبلغ {amount} $ من رصيدك.\nرصيدك الان: {current_bal} $")
+                    bot.send_message(target_id, f"تم خصم مبلغ {amount} من رصيدك.\nرصيدك الحالي: {current_bal}")
                 except Exception:
                     pass
                 
@@ -223,28 +222,56 @@ def handle_text_messages(message):
             
         elif state == 'waiting_operation_id':
             op_id = message.text.strip()
-            pending_topup[user_id]['op_id'] = op_id
+            curr_type = pending_topup[user_id]['curr_type']
+            amount_str = pending_topup[user_id]['amount']
+            
+            try:
+                import re
+                numbers = re.findall(r'\d+\.?\d*', amount_str)
+                raw_amount = float(numbers[0]) if numbers else 0.0
+            except Exception:
+                raw_amount = 0.0
+
+            if user_id not in users_db:
+                users_db[user_id] = {'name': message.from_user.first_name, 'balance': 0.0, 'spent': 0.0, 'orders': 0, 'banned': False, 'currency': 'USD'}
+
+            # إذا كانت العملة الأساسية للبوت هي SYP والمستخدم حول دولار، نحول الدولار إلى ليرة (أو العكس حسب الرغبة)
+            # بناءً على طلبك: "حسب العملة شو هوي مختارها بينضاف" و "حول 150 ليرة سورية بتنضاف 150 ليرة سورية، حول 1 دولار بينضاف 1 دولار"
+            # الرصيد المخزن في النظام أساساً بالدولار كمعدل، لكن سنضيف القيمة المدخلة مباشرة أو نحسبها بما يتناسب مع عملته الحالية:
+            # لتجنب اللوب، سنضيف القيمة مباشرة بالعملة التي اختارها إذا كان البوت يتعامل بالدولار أو الليرة. 
+            # بما أن النظام يحفظ الرصيد بالدولار، إذا أضاف ليرة سورية نقسم على سعر الصرف، وإذا أضاف دولار نضيفه كما هو.
+            # أو إذا كان النظام يخزن الرصيد بالدولار، يمكننا إضافة القيمة الصافية حسب ما اختار المستخدم:
+            
+            user_curr = users_db[user_id].get('currency', 'USD')
+            
+            if curr_type == 'USD':
+                added_value = raw_amount
+            else: # SYP
+                # إذا أدخل ليرة سورية، وقيمة الرصيد بالدولار، نقوم بتقسيمها على سعر الصرف لكي تتوازن الحسابات، 
+                # أو إذا أردت أن يتم إضافة الرقم كما هو (مثلاً 150 ليرة)، فلنضبطها حسب العملة المخزنة:
+                # لنفترض أننا سنضيف القيمة بالدولار الحقيقي لتوافق النظام:
+                added_value = raw_amount / exchange_rate
+
+            users_db[user_id]['balance'] += added_value
+            total_bal = users_db[user_id]['balance']
+            
+            if user_curr == 'SYP':
+                disp_bal = f"{total_bal * exchange_rate:,.0f} ل.س"
+            else:
+                disp_bal = f"{total_bal} $"
+
+            bot.reply_to(message, f"✅ تم استلام طلبك وشحن رصيدك بنجاح!\nرصيدك الحالي: {disp_bal}")
             
             u_name = users_db.get(user_id, {}).get('name', message.from_user.first_name)
-            amount = pending_topup[user_id]['amount']
-            
-            bot.reply_to(message, "تم استلام طلب تعبئة رصيدك ستوافق عليها الإدارة ✅")
-            
             admin_msg = (
-                f"📌 طلب تعبئة رصيد جديد:\n\n"
+                f"📌 عملية تعبئة رصيد ناجحة (Sham Cash - {curr_type}):\n\n"
                 f"📌 اسم المستخدم: {u_name}\n"
                 f"📌 ايدي الحساب: `{user_id}`\n"
-                f"📌 المبلغ: {amount}\n"
+                f"📌 المبلغ المضاف: {amount_str} {'$' if curr_type=='USD' else 'ل.س'}\n"
                 f"📌 رقم العملية: {op_id}"
             )
+            bot.send_message(ADMIN_ID, admin_msg, parse_mode='Markdown')
             
-            markup_admin_approval = types.InlineKeyboardMarkup()
-            markup_admin_approval.add(
-                types.InlineKeyboardButton('✅ موافق', callback_data=f'approve_topup_{user_id}_{amount}'),
-                types.InlineKeyboardButton('❌ غير موافق', callback_data=f'reject_topup_{user_id}')
-            )
-            
-            bot.send_message(ADMIN_ID, admin_msg, parse_mode='Markdown', reply_markup=markup_admin_approval)
             del pending_topup[user_id]
             return
 
@@ -307,7 +334,8 @@ def handle_text_messages(message):
 
 def show_topup_methods(message):
     markup_topup = types.InlineKeyboardMarkup()
-    markup_topup.add(types.InlineKeyboardButton('🟩 Sham Cash', callback_data='pay_sham'))
+    markup_topup.add(types.InlineKeyboardButton('🟩 Sham Cash (تحويل دولار 💵)', callback_data='pay_sham_usd'))
+    markup_topup.add(types.InlineKeyboardButton('🟩 Sham Cash (تحويل ليرة سورية 🇸🇾)', callback_data='pay_sham_syp'))
     markup_topup.add(types.InlineKeyboardButton('🟥 Syriatel Cash', callback_data='pay_syriatel'))
     markup_topup.add(types.InlineKeyboardButton('🟨 MTN Cash', callback_data='pay_mtn'))
     
@@ -336,19 +364,29 @@ def handle_callbacks(call):
     data = call.data
     user_id = call.from_user.id
     
-    if data == 'pay_sham':
+    if data == 'pay_sham_usd':
         bot.answer_callback_query(call.id)
         sham_msg = (
-            f"تحويل Sham Cash ليرة سورية 💵\n"
-            f"كل 1$ = {exchange_rate:,} ل.س\n"
-            f"اقل مبلغ للتعبئة هو: 1دولار💲\n"
-            f"قم بالتحويل على هذا الحساب ⏬\n"
+            f"تحويل Sham Cash (دولار 💵)\n"
+            f"قم بالتحويل على حساب Sham Cash التالي ⏬\n"
             f"ebae7d2aa7d10e62f02b1199d87208f4\n"
             f"اسم الحساب: جورج عيسى بركات."
         )
         bot.send_message(call.message.chat.id, sham_msg)
-        pending_topup[user_id] = {'state': 'waiting_amount'}
-        bot.send_message(call.message.chat.id, "ادخل المبلغ الذي أرسلته ⏬")
+        pending_topup[user_id] = {'state': 'waiting_amount', 'curr_type': 'USD'}
+        bot.send_message(call.message.chat.id, "ادخل مبلغ الدولار الذي أرسلته (مثال: 5) ⏬")
+
+    elif data == 'pay_sham_syp':
+        bot.answer_callback_query(call.id)
+        sham_msg = (
+            f"تحويل Sham Cash (ليرة سورية 🇸🇾)\n"
+            f"قم بالتحويل على حساب Sham Cash التالي ⏬\n"
+            f"ebae7d2aa7d10e62f02b1199d87208f4\n"
+            f"اسم الحساب: جورج عيسى بركات."
+        )
+        bot.send_message(call.message.chat.id, sham_msg)
+        pending_topup[user_id] = {'state': 'waiting_amount', 'curr_type': 'SYP'}
+        bot.send_message(call.message.chat.id, "ادخل مبلغ الليرات السورية الذي أرسلته (مثال: 150000) ⏬")
 
     elif data.startswith('approve_topup_'):
         if user_id != ADMIN_ID:
@@ -379,7 +417,7 @@ def handle_callbacks(call):
         try:
             client_msg = (
                 f"تم اضافة المبلغ: {amount_str}\n"
-                f"رصيدك الان: {total_bal} $\n"
+                f"رصيدك الحالي: {total_bal}\n"
                 f"استمتع بطلب من خدماتنا"
             )
             bot.send_message(target_user_id, client_msg)
