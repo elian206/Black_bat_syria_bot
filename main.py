@@ -15,7 +15,7 @@ except Exception:
     pass
 
 ADMIN_ID = 8534087775
-ADMIN_USERNAME = "black_bat_s" # تم تحديث معرف الدعم ليصبح حسابك المطلوب
+ADMIN_USERNAME = "black_bat_s"
 CHANNEL_USERNAME = '@black1_bat_syria'
 
 API_BASE = "https://mhd-game.com/api"
@@ -96,19 +96,9 @@ def create_mhd_order(product_id, quantity, player_id):
     try:
         unique_order_uuid = str(uuid.uuid4())
         url = f"{API_BASE}/client/api/newOrder/{product_id}/params"
-        
-        params = {
-            "qty": quantity,
-            "playerId": player_id,
-            "order_uuid": unique_order_uuid,
-        }
-        
+        params = {"qty": quantity, "playerId": player_id, "order_uuid": unique_order_uuid}
         response = requests.get(url, headers=api_headers, params=params)
-        try:
-            res_json = response.json()
-        except ValueError:
-            return {"status": "ERROR", "message": f"الموقع أرسل رداً غير صالح. الكود: {response.status_code}"}
-            
+        res_json = response.json()
         res_json['order_uuid'] = unique_order_uuid
         return res_json
     except Exception as e:
@@ -118,18 +108,9 @@ def create_mhd_code_order(product_id, quantity=1):
     try:
         unique_order_uuid = str(uuid.uuid4())
         url = f"{API_BASE}/client/api/newOrder/{product_id}/params"
-        
-        params = {
-            "qty": quantity,
-            "order_uuid": unique_order_uuid,
-        }
-        
+        params = {"qty": quantity, "order_uuid": unique_order_uuid}
         response = requests.get(url, headers=api_headers, params=params)
-        try:
-            res_json = response.json()
-        except ValueError:
-            return {"status": "ERROR", "message": f"الموقع أرسل رداً غير صالح. الكود: {response.status_code}"}
-            
+        res_json = response.json()
         res_json['order_uuid'] = unique_order_uuid
         return res_json
     except Exception as e:
@@ -140,11 +121,7 @@ def check_mhd_order_status(order_uuid):
         url = f"{API_BASE}/client/api/orderStatus"
         params = {"order_uuid": order_uuid}
         response = requests.get(url, headers=api_headers, params=params)
-        try:
-            res_data = response.json()
-            return res_data
-        except ValueError:
-            return {"status": "ERROR", "message": "استجابة غير صالحة من سيرفر الموقع"}
+        return response.json()
     except Exception as e:
         return {"status": "ERROR", "message": str(e)}
 
@@ -161,20 +138,15 @@ def check_subscription(user_id):
 def send_welcome(message):
     global bot_is_active
     user_id = message.from_user.id
-    
     if not bot_is_active and user_id != ADMIN_ID:
         return
 
     if user_id not in users_db:
         users_db[user_id] = {
             'name': message.from_user.first_name,
-            'balance': 0.0,
-            'spent': 0.0,
-            'orders_count': 0,
-            'banned': False,
-            'currency': 'USD',
-            'topup_history': [],
-            'orders_history': []
+            'balance': 0.0, 'spent': 0.0, 'orders_count': 0,
+            'banned': False, 'currency': 'USD',
+            'topup_history': [], 'orders_history': []
         }
     
     if users_db[user_id]['banned']:
@@ -183,12 +155,9 @@ def send_welcome(message):
 
     if not check_subscription(user_id) and user_id != ADMIN_ID:
         markup_sub = types.InlineKeyboardMarkup()
-        btn_channel = types.InlineKeyboardButton('📢 اشترك في القناة الان', url='https://t.me/black1_bat_syria')
-        btn_check = types.InlineKeyboardButton('✅ تحقق من الاشتراك', callback_data='check_sub')
-        markup_sub.add(btn_channel)
-        markup_sub.add(btn_check)
-        
-        bot.reply_to(message, "⚠️ عذراً، يجب عليك الاشتراك في قناة المتجر أولاً لتتمكن من استخدام البوت.\n\nرابط القناة: https://t.me/black1_bat_syria\n\nبعد الاشتراك، اضغط على زر التحقق بالأسفل 👇", reply_markup=markup_sub)
+        markup_sub.add(types.InlineKeyboardButton('📢 اشترك في القناة الان', url='https://t.me/black1_bat_syria'))
+        markup_sub.add(types.InlineKeyboardButton('✅ تحقق من الاشتراك', callback_data='check_sub'))
+        bot.reply_to(message, "⚠️ عذراً، يجب عليك الاشتراك في قناة المتجر أولاً لتتمكن من استخدام البوت.\n\nرابط القناة: https://t.me/black1_bat_syria", reply_markup=markup_sub)
         return
 
     show_main_menu(message.chat.id, message.from_user.first_name, user_id)
@@ -199,31 +168,17 @@ def show_main_menu(chat_id, user_name, user_id):
     curr_btn_text = '💱 العملة: دولار ($)' if current_curr == 'USD' else '💱 العملة: ليرة سورية (ل.س)'
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    btn1 = types.KeyboardButton('🛍 خدمات متجرنا')
-    btn2 = types.KeyboardButton('👤 حسابك')
-    btn3 = types.KeyboardButton('💳 تعبئة رصيد')
-    btn_support = types.KeyboardButton('📞 الدعم') 
-    btn_curr = types.KeyboardButton(curr_btn_text)
+    markup.add(types.KeyboardButton('🛍 خدمات متجرنا'))
+    markup.add(types.KeyboardButton('👤 حسابك'), types.KeyboardButton('💳 تعبئة رصيد'))
+    markup.add(types.KeyboardButton('📞 الدعم'), types.KeyboardButton(curr_btn_text))
     
     if chat_id == ADMIN_ID:
-        btn_admin = types.KeyboardButton('⚙️ لوحة تحكم الأدمن')
-        markup.add(btn1)
-        markup.add(btn2, btn3)
-        markup.add(btn_support, btn_curr)
-        markup.add(btn_admin)
-    else:
-        markup.add(btn1)
-        markup.add(btn2, btn3)
-        markup.add(btn_support, btn_curr)
+        markup.add(types.KeyboardButton('⚙️ لوحة تحكم الأدمن'))
     
     markup_inline = types.InlineKeyboardMarkup()
     markup_inline.add(types.InlineKeyboardButton(f'📊 الطلبات المنفذة: {total_orders_global}', callback_data='show_global_orders_count'))
 
-    welcome_msg = (
-        f"أهلاً بك {user_name} بمتجر BLACK BAT 📱\n"
-        f"نشكرك على التعامل معنا 🤝\n"
-        f"قم باختيار ماذا تريد من خدماتنا ⏬"
-    )
+    welcome_msg = f"أهلاً بك {user_name} بمتجر BLACK BAT 📱\nنشكرك على التعامل معنا 🤝\nقم باختيار ماذا تريد من خدماتنا ⏬"
     bot.send_message(chat_id, welcome_msg, reply_markup=markup)
     bot.send_message(chat_id, "📊 لمعرفة وإحصاءات الطلبات المنفذة بالمتجر اضغط الزر أدناه:", reply_markup=markup_inline)
 
@@ -258,9 +213,8 @@ def handle_text_messages(message):
     if user_id == ADMIN_ID:
         admin_st = admin_states.get('state')
         if admin_st == 'waiting_new_rate':
-            text = message.text.strip()
             try:
-                numbers = re.findall(r'\d+', text)
+                numbers = re.findall(r'\d+', message.text.strip())
                 if numbers:
                     exchange_rate = int(''.join(numbers))
                     admin_states.clear()
@@ -290,7 +244,7 @@ def handle_text_messages(message):
                 show_admin_panel(message)
                 return
             except Exception:
-                bot.reply_to(message, "⚠️ الصيغة خاطئة. يرجى الإرسال بهذا الشكل:\n`الايدي المبلغ` (مثال: `123456789 10`)", parse_mode='Markdown')
+                bot.reply_to(message, "⚠️ الصيغة خاطئة. اتبع النمط: `الايدي المبلغ`", parse_mode='Markdown')
                 return
 
         elif admin_st == 'waiting_deduct_balance':
@@ -311,7 +265,7 @@ def handle_text_messages(message):
                 show_admin_panel(message)
                 return
             except Exception:
-                bot.reply_to(message, "⚠️ الصيغة خاطئة. يرجى الإرسال بهذا الشكل:\n`الايدي المبلغ` (مثال: `123456789 5`)", parse_mode='Markdown')
+                bot.reply_to(message, "⚠️ الصيغة خاطئة. اتبع النمط: `الايدي المبلغ`", parse_mode='Markdown')
                 return
 
         elif admin_st == 'waiting_broadcast_msg':
@@ -334,7 +288,6 @@ def handle_text_messages(message):
             pending_topup[user_id]['amount'] = message.text.strip()
             pending_topup[user_id]['state'] = 'waiting_operation_id'
             
-            # إضافة الأزرار المطلوبة عند خطوة إرسال رقم العملية/العملة
             markup_confirm_topup = types.InlineKeyboardMarkup()
             markup_confirm_topup.add(
                 types.InlineKeyboardButton('نعم ✅', callback_data='topup_confirm_yes'),
@@ -384,7 +337,7 @@ def handle_text_messages(message):
     if message.text == '📞 الدعم':
         markup_support = types.InlineKeyboardMarkup()
         markup_support.add(types.InlineKeyboardButton('💬 تواصل مع الأدمن مباشرة', url=f'https://t.me/{ADMIN_USERNAME}'))
-        bot.reply_to(message, "📞 للتواصل مع الدعم الفني أو الاستفسار عن أي مشكلة، يمكنك الضغط على الزر أدناه للانتقال للملف الشخصي للأدمن مباشرة 👇", reply_markup=markup_support)
+        bot.reply_to(message, "📞 للتواصل مع الدعم الفني أو الاستفسار، يمكنك الضغط على الزر أدناه للانتقال للملف الشخصي للأدمن مباشرة 👇", reply_markup=markup_support)
         return
 
     if message.text == '🛍 خدمات متجرنا':
@@ -401,12 +354,8 @@ def handle_text_messages(message):
         bal = u_data['balance']
         spnt = u_data['spent']
         
-        if curr == 'SYP':
-            bal_display = f"{bal * exchange_rate:,.0f} ل.س"
-            spnt_display = f"{spnt * exchange_rate:,.0f} ل.س"
-        else:
-            bal_display = f"{bal} $"
-            spnt_display = f"{spnt} $"
+        bal_display = f"{bal * exchange_rate:,.0f} ل.س" if curr == 'SYP' else f"{bal} $"
+        spnt_display = f"{spnt * exchange_rate:,.0f} ل.س" if curr == 'SYP' else f"{spnt} $"
 
         account_info = (
             f"👤 **معلومات حسابك الشخصي:**\n\n"
@@ -447,10 +396,7 @@ def show_admin_panel(message):
     
     markup_admin = types.InlineKeyboardMarkup()
     markup_admin.add(types.InlineKeyboardButton('💱 تغيير سعر الصرف', callback_data='adm_exchange_rate'))
-    markup_admin.add(
-        types.InlineKeyboardButton('➕ إضافة رصيد يدوي', callback_data='adm_add_bal'),
-        types.InlineKeyboardButton('➖ خصم رصيد يدوي', callback_data='adm_deduct_bal')
-    )
+    markup_admin.add(types.InlineKeyboardButton('➕ إضافة رصيد يدوي', callback_data='adm_add_bal'), types.InlineKeyboardButton('➖ خصم رصيد يدوي', callback_data='adm_deduct_bal'))
     markup_admin.add(types.InlineKeyboardButton('📢 إرسال رسالة للجميع', callback_data='adm_broadcast'))
     markup_admin.add(types.InlineKeyboardButton('👥 سجل العملاء', callback_data='adm_users_log'))
     markup_admin.add(types.InlineKeyboardButton('💻 كود البوت', callback_data='adm_get_source_code'))
@@ -485,7 +431,7 @@ def handle_callbacks(call):
         bot.answer_callback_query(call.id, "جاري إرسال كود البوت...")
         try:
             with open(__file__, 'rb') as f:
-                bot.send_document(call.message.chat.id, f, caption="💻 تفضل ملف كود البوت الحالي. يمكنك التعديل عليه وإرساله لي لاحقاً في أي وقت مع طلباتك الجديدة.")
+                bot.send_document(call.message.chat.id, f, caption="💻 تفضل ملف كود البوت الحالي.")
         except Exception as e:
             bot.send_message(call.message.chat.id, f"❌ حدث خطأ أثناء إرسال الكود: {e}")
         return
@@ -495,7 +441,7 @@ def handle_callbacks(call):
             return
         admin_states['state'] = 'waiting_new_rate'
         bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, f"💱 سعر الصرف الحالي هو: {exchange_rate:,} ل.س\n\nأرسل سعر الصرف الجديد الآن (أرقام فقط):")
+        bot.send_message(call.message.chat.id, f"💱 سعر الصرف الحالي هو: {exchange_rate:,} ل.س\n\nأرسل سعر الصرف الجديد الآن:")
         return
 
     elif data == 'adm_add_bal':
@@ -503,7 +449,7 @@ def handle_callbacks(call):
             return
         admin_states['state'] = 'waiting_add_balance'
         bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, "➕ أرسل الآيدي والمبلغ للإضافة بهذا الشكل:\n`الايدي المبلغ`\nمثال: `8534087775 10`", parse_mode='Markdown')
+        bot.send_message(call.message.chat.id, "➕ أرسل الآيدي والمبلغ للإضافة بهذا الشكل:\n`الايدي المبلغ`", parse_mode='Markdown')
         return
 
     elif data == 'adm_deduct_bal':
@@ -511,7 +457,7 @@ def handle_callbacks(call):
             return
         admin_states['state'] = 'waiting_deduct_balance'
         bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, "➖ أرسل الآيدي والمبلغ للخصم بهذا الشكل:\n`الايدي المبلغ`\nمثال: `8534087775 5`", parse_mode='Markdown')
+        bot.send_message(call.message.chat.id, "➖ أرسل الآيدي والمبلغ للخصم بهذا الشكل:\n`الايدي المبلغ`", parse_mode='Markdown')
         return
 
     elif data == 'adm_broadcast':
@@ -519,7 +465,7 @@ def handle_callbacks(call):
             return
         admin_states['state'] = 'waiting_broadcast_msg'
         bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, "📢 أرسل الرسالة التي تريد نشرها لجميع العملاء الآن (سيتم إرسالها فوراً عند الإرسال):")
+        bot.send_message(call.message.chat.id, "📢 أرسل الرسالة التي تريد نشرها لجميع العملاء الآن:")
         return
 
     elif data == 'adm_users_log':
@@ -528,20 +474,12 @@ def handle_callbacks(call):
         bot.answer_callback_query(call.id)
         total_users = len(users_db)
         bot.send_message(call.message.chat.id, f"👥 **عدد العملاء الكلي:** `{total_users}`", parse_mode='Markdown')
-        
         for uid, udata in users_db.items():
             u_name = udata.get('name', 'بدون اسم')
             u_bal = udata.get('balance', 0.0)
             u_spent = udata.get('spent', 0.0)
             u_orders = udata.get('orders_count', 0)
-            
-            log_msg = (
-                f"👤 اسم العميل: {u_name}\n"
-                f"🆔 آيدي العميل: `{uid}`\n"
-                f"💰 رصيده: ${u_bal}\n"
-                f"💸 صرفه: ${u_spent}\n"
-                f"📦 عدد طلباته: {u_orders}"
-            )
+            log_msg = f"👤 اسم العميل: {u_name}\n🆔 آيدي العميل: `{uid}`\n💰 رصيده: ${u_bal}\n💸 صرفه: ${u_spent}\n📦 طلباته: {u_orders}"
             bot.send_message(call.message.chat.id, log_msg, parse_mode='Markdown')
         return
 
@@ -552,7 +490,7 @@ def handle_callbacks(call):
         if not history:
             bot.send_message(call.message.chat.id, "📜 ليس لديك أي عمليات تعبئة رصيد سابقة.")
         else:
-            msg = "📜 **سجل عمليات تعبئة الرصيد الخاصة بك:**\n\n" + "\n".join([f"🔹 {item}" for item in history])
+            msg = "📜 **سجل عمليات تعبئة الرصيد:**\n\n" + "\n".join([f"🔹 {item}" for item in history])
             bot.send_message(call.message.chat.id, msg, parse_mode='Markdown')
         return
 
@@ -565,8 +503,7 @@ def handle_callbacks(call):
         else:
             msg = "📦 **سجل طلباتك:**\n\n"
             for idx, ord_info in enumerate(orders, 1):
-                msg += f"#{idx} | الخدمة: {ord_info['name']} | الكود/الحالة: {ord_info.get('status', 'قيد التنفيذ')}\n"
-            
+                msg += f"#{idx} | الخدمة: {ord_info['name']} | الحالة: {ord_info.get('status', 'قيد التنفيذ')}\n"
             markup_refresh = types.InlineKeyboardMarkup()
             markup_refresh.add(types.InlineKeyboardButton('🔄 تحديث الطلبات', callback_data='refresh_my_orders'))
             bot.send_message(call.message.chat.id, msg, parse_mode='Markdown', reply_markup=markup_refresh)
@@ -587,14 +524,8 @@ def handle_callbacks(call):
                 res = check_mhd_order_status(uuid_str)
                 if res and isinstance(res, dict):
                     status_val = res.get("status") or res.get("state") or res.get("message")
-                    if status_val:
-                        ord_info['status'] = str(status_val)
-                    else:
-                        ord_info['status'] = "مكتمل / قيد التنفيذ"
-                else:
-                    ord_info['status'] = "قيد التنفيذ"
-            
-            updated_msg += f"#{idx} | الخدمة: {ord_info['name']} | التفاصيل/الحالة: {ord_info['status']}\n"
+                    ord_info['status'] = str(status_val) if status_val else "مكتمل / قيد التنفيذ"
+            updated_msg += f"#{idx} | الخدمة: {ord_info['name']} | الحالة: {ord_info['status']}\n"
 
         markup_refresh = types.InlineKeyboardMarkup()
         markup_refresh.add(types.InlineKeyboardButton('🔄 تحديث الطلبات', callback_data='refresh_my_orders'))
@@ -609,53 +540,18 @@ def handle_callbacks(call):
         curr_type = 'USD' if data == 'pay_sham_usd' else 'SYP'
         
         if data == 'pay_sham_usd':
-            m_name = 'Sham Cash (دولار)'
-            details_msg = (
-                f"🟩 **تحويل Sham Cash (دولار 💵)**\n\n"
-                f"قم بالتحويل على هذا الحساب ⏬\n"
-                f"`ebae7d2aa7d10e62f02b1199d87208f4`\n"
-                f"اسم الحساب: جورج عيسى بركات.\n\n"
-                f"الرجاء إرسال **المبلغ المراد تعبئته** في رسالة الآن ⏬"
-            )
+            m_name, details_msg = 'Sham Cash (دولار)', "🟩 **تحويل Sham Cash (دولار 💵)**\n\nحساب التحويل:\n`ebae7d2aa7d10e62f02b1199d87208f4`\nاسم الحساب: جورج عيسى بركات.\n\nالرجاء إرسال **المبلغ المراد تعبئته** الآن ⏬"
         elif data == 'pay_sham_syp':
-            m_name = 'Sham Cash (ليرة سورية)'
-            details_msg = (
-                f"🟩 **تحويل Sham Cash ليرة سورية 💵**\n\n"
-                f"كل 1$ = {exchange_rate:,} ل.س\n"
-                f"اقل مبلغ للتعبئة هو: 1 دولار 💲\n\n"
-                f"قم بالتحويل على هذا الحساب ⏬\n"
-                f"`ebae7d2aa7d10e62f02b1199d87208f4`\n"
-                f"اسم الحساب: جورج عيسى بركات.\n\n"
-                f"الرجاء إرسال **المبلغ المراد تعبئته** في رسالة الآن ⏬"
-            )
+            m_name, details_msg = 'Sham Cash (ليرة سورية)', f"🟩 **تحويل Sham Cash ليرة سورية 🇸🇾**\n\nكل 1$ = {exchange_rate:,} ل.س\nالحساب: `ebae7d2aa7d10e62f02b1199d87208f4`\nاسم الحساب: جورج عيسى بركات.\n\nالرجاء إرسال **المبلغ المراد تعبئته** الآن ⏬"
         elif data == 'pay_syriatel':
-            m_name = 'Syriatel Cash'
-            details_msg = (
-                f"🟥 **تحويل Syriatel Cash ليرة سورية 💵**\n\n"
-                f"كل 1$ = {exchange_rate:,} ل.س\n\n"
-                f"كود تحويل ⏪ `92189062`\n\n"
-                f"⚠️ التحويل حصرا من خيار (تحويل يدوي) اذا قمت بتحويل رصيد عادي لن يتم الموافقة ع طلب التعبئة.\n\n"
-                f"الرجاء إرسال **المبلغ المراد تعبئته** في رسالة الآن ⏬"
-            )
+            m_name, details_msg = 'Syriatel Cash', f"🟥 **تحويل Syriatel Cash 🇸🇾**\n\nكل 1$ = {exchange_rate:,} ل.س\nكود تحويل ⏪ `92189062`\n\nالرجاء إرسال **المبلغ المراد تعبئته** الآن ⏬"
         else:
-            m_name = 'MTN Cash'
-            details_msg = (
-                f"🟨 **تحويل MTN Cash ليرة سورية 💵**\n\n"
-                f"كل 1$ = {exchange_rate:,} ل.س\n\n"
-                f"كود تحويل ⏬\n`8338 3112 0672 4992`\n\n"
-                f"⚠️ التحويل حصرا من خيار (عن طريق رقم المحفظة) اذا قمت بتحويل رصيد عادي لن يتم الموافقة ع طلب التعبئة.\n\n"
-                f"الرجاء إرسال **المبلغ المراد تعبئته** في رسالة الآن ⏬"
-            )
+            m_name, details_msg = 'MTN Cash', f"🟨 **تحويل MTN Cash 🇸🇾**\n\nكل 1$ = {exchange_rate:,} ل.س\nكود التحويل ⏬\n`8338 3112 0672 4992`\n\nالرجاء إرسال **المبلغ المراد تعبئته** الآن ⏬"
 
-        pending_topup[user_id] = {
-            'method_name': m_name,
-            'curr_type': curr_type,
-            'state': 'waiting_amount'
-        }
+        pending_topup[user_id] = {'method_name': m_name, 'curr_type': curr_type, 'state': 'waiting_amount'}
         bot.send_message(call.message.chat.id, details_msg, parse_mode='Markdown')
         return
 
-    # معالجة أزرار نعم ولا الخاصة بتعبئة الرصيد
     elif data == 'topup_confirm_yes':
         if user_id not in pending_topup:
             bot.answer_callback_query(call.id, "انتهت الجلسة.", show_alert=True)
@@ -667,7 +563,7 @@ def handle_callbacks(call):
     elif data == 'topup_confirm_no':
         if user_id in pending_topup:
             del pending_topup[user_id]
-        bot.answer_callback_query(call.id, "تم الإلغاء والإرجاع إلى قائمة تعبئة الرصيد.")
+        bot.answer_callback_query(call.id, "تم الإلغاء والإرجاع إلى القائمة.")
         try:
             bot.delete_message(call.message.chat.id, call.message.message_id)
         except Exception:
@@ -681,7 +577,7 @@ def handle_callbacks(call):
         if cat_key == "🎮 شحن ألعاب":
             markup_games = types.InlineKeyboardMarkup()
             markup_games.add(types.InlineKeyboardButton("PUBG Mobile 🕹", callback_data="game_pubg"))
-            bot.send_message(call.message.chat.id, "اختر اللعبة المطلوبة ⏬", reply_markup=markup_games)
+            bot.send_message(call.message.chat.id, "اختر اللعبة المطلوبة ّ⏬", reply_markup=markup_games)
         return
 
     elif data == "game_pubg":
@@ -691,7 +587,19 @@ def handle_callbacks(call):
         markup_pubg.add(types.InlineKeyboardButton("سيرفر 2 🆔", callback_data="pubg_srv2"))
         markup_pubg.add(types.InlineKeyboardButton("اكواد 📱", callback_data="pubg_codes"))
         markup_pubg.add(types.InlineKeyboardButton("عضويات 💳", callback_data="pubg_mems"))
-        bot.send_message(call.message.chat.id, "اختر القسم المناسب لـ PUBG Mobile 🕹", reply_markup=markup_pubg)
+        
+        # إرسال صورة ببجي عند الدخول لزر ببجي
+        pubg_image_url = "https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800"
+        try:
+            bot.send_photo(
+                call.message.chat.id, 
+                pubg_image_url, 
+                caption="🎮 **قسم شحن شدات وأعضاء PUBG Mobile**\nاختر القسم المناسب من الأزرار أدناه ⏬", 
+                parse_mode="Markdown", 
+                reply_markup=markup_pubg
+            )
+        except Exception:
+            bot.send_message(call.message.chat.id, "🎮 **قسم شحن شدات وأعضاء PUBG Mobile**\nاختر القسم المناسب ⏬", reply_markup=markup_pubg)
         return
 
     elif data in ["pubg_srv1", "pubg_srv2", "pubg_codes", "pubg_mems"]:
@@ -718,13 +626,7 @@ def handle_callbacks(call):
 
     elif data.startswith('buycode_'):
         prod_id = int(data.split('_')[1])
-        selected_code = None
-        
-        codes_list = store_categories["🎮 شحن ألعاب"]["PUBG Mobile 🕹"]["اكواد 📱"]
-        for p in codes_list:
-            if p['id'] == prod_id:
-                selected_code = p
-                break
+        selected_code = next((p for p in store_categories["🎮 شحن ألعاب"]["PUBG Mobile 🕹"]["اكواد 📱"] if p['id'] == prod_id), None)
                 
         if not selected_code:
             bot.answer_callback_query(call.id, "الكود غير موجود.")
@@ -735,34 +637,15 @@ def handle_callbacks(call):
 
         if user_balance < p_price:
             bot.answer_callback_query(call.id, "رصيدك غير كافٍ!", show_alert=True)
-            bot.send_message(call.message.chat.id, "❌ عذراً، ليس لديك رصيد كافي لإتمام طلبك، قم بتعبئة رصيدك 💳")
+            bot.send_message(call.message.chat.id, "❌ عذراً، ليس لديك رصيد كافي، قم بتعبئة رصيدك 💳")
             return
 
-        user_temp_code[user_id] = {
-            "product_id": selected_code['id'],
-            "product_name": selected_code['name'],
-            "price": p_price
-        }
-
-        formatted_price = format_price(user_id, p_price)
-        formatted_balance = format_price(user_id, user_balance)
-
+        user_temp_code[user_id] = {"product_id": selected_code['id'], "product_name": selected_code['name'], "price": p_price}
         markup_conf = types.InlineKeyboardMarkup()
-        markup_conf.add(
-            types.InlineKeyboardButton("نعم ✅", callback_data="confirm_code_yes"),
-            types.InlineKeyboardButton("لا ❌", callback_data="confirm_code_no")
-        )
+        markup_conf.add(types.InlineKeyboardButton("نعم ✅", callback_data="confirm_code_yes"), types.InlineKeyboardButton("لا ❌", callback_data="confirm_code_no"))
 
         bot.answer_callback_query(call.id)
-        bot.send_message(
-            call.message.chat.id,
-            f"🔹 **اسم الخدمة:** {selected_code['name']}\n"
-            f"💵 **سعر الخدمة:** {formatted_price}\n"
-            f"💰 **رصيدك:** {formatted_balance}\n\n"
-            f"❓ **هل تريد إتمام شراء هذا الكود؟**",
-            parse_mode="Markdown",
-            reply_markup=markup_conf
-        )
+        bot.send_message(call.message.chat.id, f"🔹 الخدمة: {selected_code['name']}\n💵 السعر: {format_price(user_id, p_price)}\n\n❓ هل تريد إتمام الشراء؟", parse_mode="Markdown", reply_markup=markup_conf)
         return
 
     elif data.startswith('confirm_code_'):
@@ -773,190 +656,105 @@ def handle_callbacks(call):
                 return
             
             code_info = user_temp_code[user_id]
-            p_id = code_info['product_id']
-            p_name = code_info['product_name']
-            price = code_info['price']
-
-            if users_db[user_id]['balance'] < price:
-                bot.answer_callback_query(call.id, "رصيدك غير كافٍ!", show_alert=True)
-                return
-
-            users_db[user_id]['balance'] -= price
-            users_db[user_id]['spent'] += price
+            users_db[user_id]['balance'] -= code_info['price']
+            users_db[user_id]['spent'] += code_info['price']
             users_db[user_id]['orders_count'] += 1
 
-            bot.answer_callback_query(call.id, "جاري طلب الكود من الموقع...")
-            response = create_mhd_code_order(product_id=p_id, quantity=1)
+            bot.answer_callback_query(call.id, "جاري طلب الكود...")
+            response = create_mhd_code_order(product_id=code_info['product_id'], quantity=1)
 
             if response and response.get("status") == "OK":
                 uuid_val = response.get("order_uuid")
                 code_content = response.get("code") or response.get("message") or "تم تسليم الكود بنجاح"
-                
-                users_db[user_id]['orders_history'].append({
-                    "name": p_name,
-                    "player_id": "بدون أيدي (كود)",
-                    "uuid": uuid_val,
-                    "status": f"الكود: {code_content}",
-                    "is_code": True
-                })
-                
+                users_db[user_id]['orders_history'].append({"name": code_info['product_name'], "player_id": "كود", "uuid": uuid_val, "status": f"الكود: {code_content}", "is_code": True})
                 total_orders_global += 1
-                
-                bot.send_message(
-                    call.message.chat.id, 
-                    f"✅ **تم شراء الكود بنجاح!**\n\n"
-                    f"📦 الخدمة: {p_name}\n"
-                    f"🔑 **الكود الخاص بك:**\n`{code_content}`",
-                    parse_mode="Markdown"
-                )
+                bot.send_message(call.message.chat.id, f"✅ **تم شراء الكود بنجاح!**\n🔑 الكود:\n`{code_content}`", parse_mode="Markdown")
             else:
-                users_db[user_id]['balance'] += price
-                users_db[user_id]['spent'] -= price
+                users_db[user_id]['balance'] += code_info['price']
+                users_db[user_id]['spent'] -= code_info['price']
                 users_db[user_id]['orders_count'] -= 1
-                err_msg = response.get("message", "خطأ غير معروف") if response else "فشل الاتصال"
-                bot.send_message(call.message.chat.id, f"❌ فشل جلب الكود من الموقع: {err_msg}\nتم إرجاع المبلغ لرصيدك.")
-
+                bot.send_message(call.message.chat.id, "❌ فشل جلب الكود من الموقع، تم إرجاع المبلغ لرصيدك.")
             del user_temp_code[user_id]
         else:
             if user_id in user_temp_code:
                 del user_temp_code[user_id]
             bot.answer_callback_query(call.id, "تم الإلغاء.")
-            markup_pubg = types.InlineKeyboardMarkup()
-            markup_pubg.add(types.InlineKeyboardButton("سيرفر 1 🆔", callback_data="pubg_srv1"))
-            markup_pubg.add(types.InlineKeyboardButton("سيرفر 2 🆔", callback_data="pubg_srv2"))
-            markup_pubg.add(types.InlineKeyboardButton("اكواد 📱", callback_data="pubg_codes"))
-            markup_pubg.add(types.InlineKeyboardButton("عضويات 💳", callback_data="pubg_mems"))
-            bot.send_message(call.message.chat.id, "تم إرجاعك إلى قائمة PUBG Mobile 🕹", reply_markup=markup_pubg)
         return
 
     elif data.startswith('buyprod_'):
         prod_id = int(data.split('_')[1])
         selected_prod = None
-        
-        pubg_sub_cats = store_categories["🎮 شحن ألعاب"]["PUBG Mobile 🕹"]
-        for sub_name, plist in pubg_sub_cats.items():
-            if sub_name == "اكواد 📱":
-                continue
-            for p in plist:
-                if p['id'] == prod_id:
-                    selected_prod = p
-                    break
-            if selected_prod:
-                break
+        for sub_name, plist in store_categories["🎮 شحن ألعاب"]["PUBG Mobile 🕹"].items():
+            if sub_name == "اكواد 📱": continue
+            selected_prod = next((p for p in plist if p['id'] == prod_id), None)
+            if selected_prod: break
                 
         if not selected_prod:
             bot.answer_callback_query(call.id, "المنتج غير موجود.")
             return
 
-        user_balance = users_db.get(user_id, {}).get('balance', 0.0)
-        p_price = selected_prod['price']
-
-        if user_balance < p_price:
+        if users_db.get(user_id, {}).get('balance', 0.0) < selected_prod['price']:
             bot.answer_callback_query(call.id, "رصيدك غير كافٍ!", show_alert=True)
-            bot.send_message(call.message.chat.id, "❌ عذراً، ليس لديك رصيد كافي لإتمام طلبك، قم بتعبئة رصيدك 💳")
+            bot.send_message(call.message.chat.id, "❌ عذراً، رصيدك غير كافي.")
             return
 
-        user_temp_order[user_id] = {
-            "product_id": selected_prod['id'],
-            "product_name": selected_prod['name'],
-            "price": p_price
-        }
-
-        formatted_price = format_price(user_id, p_price)
-        formatted_balance = format_price(user_id, user_balance)
-
+        user_temp_order[user_id] = {"product_id": selected_prod['id'], "product_name": selected_prod['name'], "price": selected_prod['price']}
         bot.answer_callback_query(call.id)
-        bot.send_message(
-            call.message.chat.id,
-            f"🔹 **اسم الخدمة:** {selected_prod['name']}\n"
-            f"💵 **سعر الخدمة:** {formatted_price}\n"
-            f"💰 **رصيدك بالبوت:** {formatted_balance}\n\n"
-            f"الرجاء إرسال **آيدي حسابه (Player ID)** في رسالة الآن ⏬",
-            parse_mode="Markdown"
-        )
+        bot.send_message(call.message.chat.id, f"🔹 الخدمة: {selected_prod['name']}\n💵 السعر: {format_price(user_id, selected_prod['price'])}\n\nالرجاء إرسال **آيدي حسابه (Player ID)** الآن ⏬", parse_mode="Markdown")
         bot.register_next_step_handler(call.message, process_player_id)
         return
 
     elif data.startswith('confirm_order_'):
         action = data.split('_')[2]
         if action == 'yes':
-            if user_id not in user_temp_order:
-                bot.answer_callback_query(call.id, "انتهت الجلسة.")
-                return
-            
-            order_info = user_temp_order[user_id]
-            p_id = order_info['product_id']
-            p_name = order_info['product_name']
-            price = order_info['price']
-            player_id = order_info['player_id']
-
-            users_db[user_id]['balance'] -= price
-            users_db[user_id]['spent'] += price
+            if user_id not in user_temp_order: return
+            o_info = user_temp_order[user_id]
+            users_db[user_id]['balance'] -= o_info['price']
+            users_db[user_id]['spent'] += o_info['price']
             users_db[user_id]['orders_count'] += 1
 
             bot.answer_callback_query(call.id, "جاري إرسال الطلب للموقع...")
-            response = create_mhd_order(product_id=p_id, quantity=1, player_id=player_id)
+            response = create_mhd_order(product_id=o_info['product_id'], quantity=1, player_id=o_info['player_id'])
 
             if response and response.get("status") == "OK":
-                uuid_val = response.get("order_uuid")
-                users_db[user_id]['orders_history'].append({
-                    "name": p_name,
-                    "player_id": player_id,
-                    "uuid": uuid_val,
-                    "status": "قيد التنفيذ",
-                    "is_code": False
-                })
-                
+                users_db[user_id]['orders_history'].append({"name": o_info['product_name'], "player_id": o_info['player_id'], "uuid": response.get("order_uuid"), "status": "قيد التنفيذ", "is_code": False})
                 total_orders_global += 1
-                
-                bot.send_message(call.message.chat.id, "✅ تم تنفيذ طلبك بنجاح، شكرا للتعامل معنا 🤝")
+                bot.send_message(call.message.chat.id, "✅ تم تنفيذ طلبك بنجاح 🤝")
             else:
-                users_db[user_id]['balance'] += price
-                users_db[user_id]['spent'] -= price
+                users_db[user_id]['balance'] += o_info['price']
+                users_db[user_id]['spent'] -= o_info['price']
                 users_db[user_id]['orders_count'] -= 1
-                err_msg = response.get("message", "خطأ غير معروف") if response else "فشل الاتصال"
-                bot.send_message(call.message.chat.id, f"❌ فشل تنفيذ الطلب من الموقع: {err_msg}\nتم إرجاع المبلغ لرصيدك.")
-
+                bot.send_message(call.message.chat.id, "❌ فشل تنفيذ الطلب، تم إرجاع المبلغ لرصيدك.")
             del user_temp_order[user_id]
         else:
-            if user_id in user_temp_order:
-                del user_temp_order[user_id]
+            if user_id in user_temp_order: del user_temp_order[user_id]
             bot.answer_callback_query(call.id, "تم الإلغاء.")
-            markup_pubg = types.InlineKeyboardMarkup()
-            markup_pubg.add(types.InlineKeyboardButton("سيرفر 1 🆔", callback_data="pubg_srv1"))
-            markup_pubg.add(types.InlineKeyboardButton("سيرفر 2 🆔", callback_data="pubg_srv2"))
-            markup_pubg.add(types.InlineKeyboardButton("اكواد 📱", callback_data="pubg_codes"))
-            markup_pubg.add(types.InlineKeyboardButton("عضويات 💳", callback_data="pubg_mems"))
-            bot.send_message(call.message.chat.id, "تم إرجاعك إلى قائمة PUBG Mobile 🕹", reply_markup=markup_pubg)
         return
 
     elif data.startswith('approve_topup_'):
-        if user_id != ADMIN_ID:
-            return
+        if user_id != ADMIN_ID: return
         parts = data.split('_')
-        target_id = int(parts[2])
-        amount = float(parts[3])
+        target_id, amount = int(parts[2]), float(parts[3])
         if target_id not in users_db:
             users_db[target_id] = {'name': 'مستخدم', 'balance': 0.0, 'spent': 0.0, 'orders_count': 0, 'banned': False, 'currency': 'USD', 'topup_history': [], 'orders_history': []}
         users_db[target_id]['balance'] += amount
         users_db[target_id]['topup_history'].append(f"تعبئة رصيد ناجحة: +${amount}")
         bot.answer_callback_query(call.id, "تمت الموافقة بنجاح!")
-        bot.edit_message_text(f"{call.message.text}\n\n✅ **الحالة:** تم قبول الطلب وإضافة الرصيد.", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode='Markdown')
+        bot.edit_message_text(f"{call.message.text}\n\n✅ **الحالة:** تم قبول الطلب.", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode='Markdown')
         try:
             bot.send_message(target_id, f"✅ تمت الموافقة على تعبئة رصيدك وإضافة مبلغ {amount}$ بنجاح!")
         except Exception:
             pass
 
     elif data.startswith('reject_topup_'):
-        if user_id != ADMIN_ID:
-            return
+        if user_id != ADMIN_ID: return
         target_id = int(data.split('_')[2])
         if target_id in users_db:
-            users_db[target_id]['topup_history'].append("رفض طلب تعبئة رصيد من الإدارة")
+            users_db[target_id]['topup_history'].append("رفض طلب تعبئة رصيد")
         bot.answer_callback_query(call.id, "تم رفض الطلب.")
         bot.edit_message_text(f"{call.message.text}\n\n❌ **الحالة:** تم رفض الطلب.", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode='Markdown')
         try:
-            bot.send_message(target_id, "❌ عذراً، تم رفض طلب تعبئة الرصيد من قبل الإدارة.")
+            bot.send_message(target_id, "❌ عذراً، تم رفض طلب تعبئة الرصيد.")
         except Exception:
             pass
 
@@ -965,33 +763,15 @@ def handle_callbacks(call):
 
 def process_player_id(message):
     user_id = message.from_user.id
-    player_id = message.text.strip()
-
     if user_id not in user_temp_order:
-        bot.send_message(message.chat.id, "انتهت الجلسة.")
         return
-
-    user_temp_order[user_id]['player_id'] = player_id
-    p_name = user_temp_order[user_id]['product_name']
-    p_price = user_temp_order[user_id]['price']
-
-    formatted_price = format_price(user_id, p_price)
+    user_temp_order[user_id]['player_id'] = message.text.strip()
+    o_info = user_temp_order[user_id]
 
     markup_conf = types.InlineKeyboardMarkup()
-    markup_conf.add(
-        types.InlineKeyboardButton("نعم ✅", callback_data="confirm_order_yes"),
-        types.InlineKeyboardButton("لا ❌", callback_data="confirm_order_no")
-    )
+    markup_conf.add(types.InlineKeyboardButton("نعم ✅", callback_data="confirm_order_yes"), types.InlineKeyboardButton("لا ❌", callback_data="confirm_order_no"))
     
-    bot.send_message(
-        message.chat.id,
-        f"📋 **ملخص الطلب:**\n"
-        f"▫️ الخدمة: {p_name}\n"
-        f"▫️ السعر: {formatted_price}\n"
-        f"▫️ الآيدي: `{player_id}`\n\n"
-        f"❓ **تريد اكمال طلبك؟**",
-        parse_mode="Markdown"قامت      reply_markup=markup_conf
-    )
+    bot.send_message(message.chat.id, f"📋 **ملخص الطلب:**\n▫️ الخدمة: {o_info['product_name']}\n▫️ السعر: {format_price(user_id, o_info['price'])}\n▫️ الآيدي: `{o_info['player_id']}`\n\n❓ **هل تريد إكمال طلبك؟**", parse_mode="Markdown", reply_markup=markup_conf)
 
 app = Flask('')
 
