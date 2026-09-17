@@ -21,6 +21,9 @@ exchange_rate = 15000
 pending_topup = {}
 admin_states = {}
 
+# متغير للتحكم بحالة تشغيل أو إطفاء البوت
+bot_is_active = True
+
 def check_subscription(user_id):
     try:
         member = bot.get_chat_member(CHANNEL_USERNAME, user_id)
@@ -32,8 +35,12 @@ def check_subscription(user_id):
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
+    global bot_is_active
     user_id = message.from_user.id
     
+    if not bot_is_active and user_id != ADMIN_ID:
+        return # إذا كان البوت مطفأً، يتجاهل المستخدمين العاديين تماماً
+
     if user_id not in users_db:
         users_db[user_id] = {
             'name': message.from_user.first_name,
@@ -91,7 +98,11 @@ def show_main_menu(chat_id, user_name, user_id):
 
 @bot.callback_query_handler(func=lambda call: call.data == 'check_sub')
 def verify_sub(call):
+    global bot_is_active
     user_id = call.from_user.id
+    if not bot_is_active and user_id != ADMIN_ID:
+        return
+        
     if check_subscription(user_id) or user_id == ADMIN_ID:
         bot.answer_callback_query(call.id, "تم التحقق بنجاح! أهلاً بك.")
         try:
@@ -104,8 +115,11 @@ def verify_sub(call):
 
 @bot.message_handler(func=lambda message: True)
 def handle_text_messages(message):
-    global exchange_rate
+    global exchange_rate, bot_is_active
     user_id = message.from_user.id
+    
+    if not bot_is_active and user_id != ADMIN_ID:
+        return # يتجاهل رسائل المستخدمين إذا كان البوت مطفأً
     
     if user_id in users_db and users_db[user_id]['banned']:
         return
@@ -315,8 +329,14 @@ def show_topup_methods(message):
     bot.reply_to(message, "💳 اختر طريقة تعبئة الرصيد المفضلة لديك:", reply_markup=markup_topup)
 
 def show_admin_panel(message):
-    admin_text = f"⚙️ **لوحة تحكم الأدمن الرئيسية:**\nسعر الصرف الحالي: {exchange_rate:,} ل.س لكل 1$\nاختر العملية المطلوبة:"
+    global bot_is_active
+    status_text = "🟢 حالة البوت: يعمل" if bot_is_active else "🔴 حالة البوت: متوقف (مطفأ)"
+    toggle_btn_text = "🔴 إطفاء البوت" if bot_is_active else "🟢 تشغيل البوت"
+    
+    admin_text = f"⚙️ **لوحة تحكم الأدمن الرئيسية:**\n{status_text}\nسعر الصرف الحالي: {exchange_rate:,} ل.س لكل 1$\nاختر العملية المطلوبة:"
+    
     markup_admin = types.InlineKeyboardMarkup()
+    markup_admin.add(types.InlineKeyboardButton(toggle_btn_text, callback_data='adm_toggle_bot'))
     markup_admin.add(types.InlineKeyboardButton('➕ اضافة رصيد يدوي', callback_data='adm_add_balance'))
     markup_admin.add(types.InlineKeyboardButton('➖ خصم رصيد يدوي', callback_data='adm_sub_balance'))
     markup_admin.add(types.InlineKeyboardButton('➕ اضافة أزرار', callback_data='adm_add_btn'))
@@ -334,9 +354,13 @@ def show_admin_panel(message):
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
+    global bot_is_active
     data = call.data
     user_id = call.from_user.id
     
+    if not bot_is_active and user_id != ADMIN_ID:
+        return
+
     if data == 'pay_sham_usd':
         bot.answer_callback_query(call.id)
         sham_msg = (
@@ -381,9 +405,6 @@ def handle_callbacks(call):
         if target_user_id not in users_db:
             users_db[target_user_id] = {'name': 'مستخدم', 'balance': 0.0, 'spent': 0.0, 'orders': 0, 'banned': False, 'currency': curr_type}
 
-        # الإضافة حسب العملة التي حولها أو حسب رغبته (إذا حول 150 ليرة تُضاف 150 ليرة كقيمة معيارية أو بالدولار المقابل)
-        # لتلبية طلبك حرفياً (حول 150 ليرة سورية بتنضاف 150 ليرة، حول 1 دولار بينضاف 1 دولار) 
-        # سنضيف القيمة الخام مباشرة للنظام ليتم حسابها مع عملة المستخدم:
         users_db[target_user_id]['balance'] += raw_amount
         total_bal = users_db[target_user_id]['balance']
         
@@ -445,6 +466,17 @@ def handle_callbacks(call):
             bot.answer_callback_query(call.id, "هذا الزر مخصص للأدمن فقط!", show_alert=True)
             return
         
+        if data == 'adm_toggle_bot':
+            bot_is_active = not bot_is_active
+            status_word = "تشغيل" if bot_is_active else "إطفاء"
+            bot.answer_callback_query(call.id, f"تم {status_word} البوت بنجاح!")
+            try:
+                bot.delete_message(call.message.chat.id, call.message.message_id)
+            except Exception:
+                pass
+            show_admin_panel(call.message)
+            return
+
         if data == 'adm_exchange_rate':
             admin_states['state'] = 'waiting_new_rate'
             bot.answer_callback_query(call.id)
