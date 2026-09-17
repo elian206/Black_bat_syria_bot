@@ -25,13 +25,9 @@ users_db = {}
 total_orders_global = 142
 exchange_rate = 15000
 
-# الأقسام الافتراضية والمنتجات المضافة من قبل الأدمن
+# الأقسام الأساسية والمنتجات المضافة من قبل الأدمن
 store_categories = {
-    "🎮 شحن العاب": [
-        {"id": 1, "name": "Free Fire (فري فاير)", "price": 1.0, "available": True},
-        {"id": 2, "name": "PUBG Mobile (ببجي موبايل)", "price": 1.5, "available": True},
-        {"id": 3, "name": "Jawaker (جواكر)", "price": 2.0, "available": True}
-    ],
+    "🎮 شحن العاب": [],
     "📱 شحن تطبيقات": [],
     "🛡 دعم حسابات": []
 }
@@ -39,7 +35,6 @@ store_categories = {
 pending_topup = {}
 admin_states = {}
 user_temp_order = {}
-
 bot_is_active = True
 
 def get_mhd_products():
@@ -212,6 +207,12 @@ def handle_text_messages(message):
                 
                 admin_states.clear()
                 bot.reply_to(message, f"✅ تمت إضافة المبلغ ({amount}) بنجاح للمستخدم `{target_id}`.\nرصيده الحالي: {current_bal}", parse_mode='Markdown')
+                
+                try:
+                    bot.send_message(target_id, f"تم اضافة المبلغ: {amount}\nرصيدك الحالي: {current_bal}\nاستمتع بطلب من خدماتنا")
+                except Exception:
+                    pass
+                
                 show_admin_panel(message)
                 return
             except Exception:
@@ -245,6 +246,12 @@ def handle_text_messages(message):
                 
                 admin_states.clear()
                 bot.reply_to(message, f"✅ تم خصم المبلغ ({amount}) بنجاح من المستخدم `{target_id}`.\nرصيده الحالي: {current_bal}", parse_mode='Markdown')
+                
+                try:
+                    bot.send_message(target_id, f"تم خصم مبلغ {amount} من رصيدك.\nرصيدك الحالي: {current_bal}")
+                except Exception:
+                    pass
+                
                 show_admin_panel(message)
                 return
             except Exception:
@@ -274,7 +281,7 @@ def handle_text_messages(message):
                         return
                 except Exception:
                     pass
-            bot.reply_to(message, "⚠️ الصيغة غير صحيحة. يرجى الإرسال بهذا الشكل تماماً:\n`ID_المنتج | اسم المنتج | السعر`\nمثال:\n`105 | باقة شدات ببجي | 5.5`", parse_mode='Markdown')
+            bot.reply_to(message, "⚠️ الصيغة غير صحيحة. يرجى الإرسال بهذا الشكل تماماً:\n`ID_المنتج | اسم المنتج | السعر`\nمثال:\n`105 | ببجي موبايل - 60 شدة | 1.2`", parse_mode='Markdown')
             return
 
     if user_id in pending_topup:
@@ -336,7 +343,7 @@ def handle_text_messages(message):
         markup_cats = types.InlineKeyboardMarkup()
         for cat_name in store_categories.keys():
             markup_cats.add(types.InlineKeyboardButton(cat_name, callback_data=f"cat_{cat_name}"))
-
+        
         bot.reply_to(message, "اختر القسم المطلوب لتصفح الخدمات والمنتجات ⏬", reply_markup=markup_cats)
 
     elif message.text == '👤 حسابك':
@@ -415,11 +422,13 @@ def handle_callbacks(call):
         if not products:
             bot.answer_callback_query(call.id, "عذراً، لا توجد منتجات متاحة حالياً عبر الـ API.", show_alert=True)
             return
+        
         markup_prods = types.InlineKeyboardMarkup()
-        for p in products[:15]:
-            markup_prods.add(types.InlineKeyboardButton(f"{p['name']} - ${p['price']}", callback_data=f"buy_{p['id']}"))
+        for p in products[:25]:
+            markup_prods.add(types.InlineKeyboardButton(f"{p['name']} - ${p['price']} (ID: {p['id']})", callback_data=f"buy_{p['id']}"))
+        
         bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, "🌐 منتجات موقع MHD API المتاحة:", reply_markup=markup_prods)
+        bot.send_message(call.message.chat.id, "🌐 جميع خدمات ومنتجات موقع MHD API المتاحة (مع المعرفات والأسعار):", reply_markup=markup_prods)
         return
 
     if data.startswith('cat_'):
@@ -429,7 +438,7 @@ def handle_callbacks(call):
         if cat_key in store_categories:
             prods = store_categories[cat_key]
             if not prods:
-                bot.send_message(call.message.chat.id, f"عذراً، لا توجد منتجات مضافة حالياً في قسم ({cat_key}).")
+                bot.send_message(call.message.chat.id, f"عذراً، لا توجد منتجات مضافة حالياً في قسم ({cat_key}). يرجى إضافتها من لوحة الأدمن.")
                 return
             
             markup_prods = types.InlineKeyboardMarkup()
@@ -653,7 +662,7 @@ def handle_callbacks(call):
         bot.answer_callback_query(call.id)
         bot.send_message(
             call.message.chat.id,
-            f"لقد اخترت قسم: **{cat_name}**\n\nالآن أرسل تفاصيل المنتج بهذا الشكل تماماً:\n`ID_المنتج | اسم المنتج | السعر بالدولار`\n\nمثال:\n`120 | شدات 60 | 1.2`",
+            f"لقد اخترت قسم: **{cat_name}**\n\nالآن أرسل تفاصيل المنتج بهذا الشكل تماماً:\n`ID_المنتج | اسم المنتج | السعر بالدولار`\n\nمثال:\n`105 | ببجي موبايل - 60 شدة | 1.2`\n\n*(يمكنك معرفة ID المنتج والسعر بدقة من زر 'منتجات موقع MHD API' في لوحة الأدمن)*",
             parse_mode='Markdown'
         )
 
