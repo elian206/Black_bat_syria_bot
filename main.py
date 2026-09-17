@@ -1,10 +1,11 @@
 import telebot
 from telebot import types
-from flask import Flask
+from flask import Flask, request
 from threading import Thread
 import requests
 import uuid
 import re
+import os
 
 TOKEN = '8909052904:AAHEsWa85CbV5Kwxs4Y1kG7h7TMtHpx-TMw'
 bot = telebot.TeleBot(TOKEN)
@@ -83,6 +84,12 @@ admin_states = {}
 user_temp_order = {}
 user_temp_code = {}
 bot_is_active = True
+
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is running!"
 
 def format_price(user_id, price_in_usd):
     curr = users_db.get(user_id, {}).get('currency', 'USD')
@@ -219,7 +226,6 @@ def handle_text_messages(message):
                     exchange_rate = int(''.join(numbers))
                     admin_states.clear()
                     bot.reply_to(message, f"✅ تم تحديث سعر الصرف بنجاح: {exchange_rate:,} ل.س")
-                    show_admin_panel(message)
                     return
             except Exception:
                 pass
@@ -232,7 +238,7 @@ def handle_text_messages(message):
                 target_id = int(parts[0])
                 amount = float(parts[1])
                 if target_id not in users_db:
-                    users_db[target_id] = {'name': 'مستخدم جديد', 'balance': 0.0, 'spent': 0.0, 'orders_count': 0, 'banned': False, 'currency': 'USD', 'topup_history': [], 'orders_history': []}
+                    users_db[target_id] = {'name': 'مستخدم', 'balance': 0.0, 'spent': 0.0, 'orders_count': 0, 'banned': False, 'currency': 'USD', 'topup_history': [], 'orders_history': []}
                 users_db[target_id]['balance'] += amount
                 users_db[target_id]['topup_history'].append(f"إضافة يدوية من الإدارة: +${amount}")
                 admin_states.clear()
@@ -241,7 +247,6 @@ def handle_text_messages(message):
                     bot.send_message(target_id, f"🎁 قامت الإدارة بإضافة رصيد لحسابك بقيمة {amount}$!")
                 except Exception:
                     pass
-                show_admin_panel(message)
                 return
             except Exception:
                 bot.reply_to(message, "⚠️ الصيغة خاطئة. اتبع النمط: `الايدي المبلغ`", parse_mode='Markdown')
@@ -253,7 +258,7 @@ def handle_text_messages(message):
                 target_id = int(parts[0])
                 amount = float(parts[1])
                 if target_id not in users_db:
-                    users_db[target_id] = {'name': 'مستخدم جديد', 'balance': 0.0, 'spent': 0.0, 'orders_count': 0, 'banned': False, 'currency': 'USD', 'topup_history': [], 'orders_history': []}
+                    users_db[target_id] = {'name': 'مستخدم', 'balance': 0.0, 'spent': 0.0, 'orders_count': 0, 'banned': False, 'currency': 'USD', 'topup_history': [], 'orders_history': []}
                 users_db[target_id]['balance'] -= amount
                 users_db[target_id]['topup_history'].append(f"خصم يدوي من الإدارة: -${amount}")
                 admin_states.clear()
@@ -262,7 +267,6 @@ def handle_text_messages(message):
                     bot.send_message(target_id, f"⚠️ قامت الإدارة بخصم مبلغ {amount}$ من رصيدك.")
                 except Exception:
                     pass
-                show_admin_panel(message)
                 return
             except Exception:
                 bot.reply_to(message, "⚠️ الصيغة خاطئة. اتبع النمط: `الايدي المبلغ`", parse_mode='Markdown')
@@ -278,4 +282,224 @@ def handle_text_messages(message):
                     success_count += 1
                 except Exception:
                     pass
-            bot.reply_to(
+            bot.reply_to(message, f"✅ تم إرسال الإذاعة بنجاح إلى {success_count} مستخدم.")
+            return
+
+    text = message.text
+    if text == '🛍 خدمات متجرنا':
+        markup = types.InlineKeyboardMarkup()
+        for cat in store_categories.keys():
+            markup.add(types.InlineKeyboardButton(cat, callback_data=f"cat_{cat}"))
+        bot.reply_to(message, "اختر القسم المناسب:", reply_markup=markup)
+
+    elif text == '👤 حسابك':
+        u_data = users_db.get(user_id, {'balance': 0.0, 'spent': 0.0, 'orders_count': 0})
+        bal_formatted = format_price(user_id, u_data['balance'])
+        spent_formatted = format_price(user_id, u_data['spent'])
+        info = (
+            f"👤 معلومات حسابك:\n\n"
+            f"🆔 ايدي: `{user_id}`\n"
+            f"💰 الرصيد: {bal_formatted}\n"
+            f"🛒 الطلبات المنفذة: {u_data['orders_count']}\n"
+            f"💸 الإجمالي المنفق: {spent_formatted}"
+        )
+        bot.reply_to(message, info, parse_mode='Markdown')
+
+    elif text == '💳 تعبئة رصيد':
+        bot.reply_to(message, f"لتعبئة الرصيد، يرجى التواصل مع الأدمن عبر المعرف التالي:\n@{ADMIN_USERNAME}")
+
+    elif text == '📞 الدعم':
+        bot.reply_to(message, f"للحصول على الدعم الفني، يرجى التواصل مع الإدارة:\n@{ADMIN_USERNAME}")
+
+    elif '💱 العملة:' in text:
+        curr = users_db[user_id].get('currency', 'USD')
+        if curr == 'USD':
+            users_db[user_id]['currency'] = 'SYP'
+            bot.reply_to(message, "✅ تم تحويل العملة إلى الليرة السورية (ل.س).")
+        else:
+            users_db[user_id]['currency'] = 'USD'
+            bot.reply_to(message, "✅ تم تحويل العملة إلى الدولار الأمريكي ($).")
+        show_main_menu(message.chat.id, message.from_user.first_name, user_id)
+
+    elif text == '⚙️ لوحة تحكم الأدمن' and user_id == ADMIN_ID:
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton('📊 إحصائيات البوت', callback_data='admin_stats'))
+        markup.add(types.InlineKeyboardButton('💱 تعديل سعر الصرف', callback_data='admin_set_rate'))
+        markup.add(types.InlineKeyboardButton('➕ إضافة رصيد لمستخدم', callback_data='admin_add_bal'))
+        markup.add(types.InlineKeyboardButton('➖ خصم رصيد من مستخدم', callback_data='admin_deduct_bal'))
+        markup.add(types.InlineKeyboardButton('📢 إذاعة عامة', callback_data='admin_broadcast'))
+        bot.reply_to(message, "⚙️ مرحباً بك في لوحة تحكم الأدمن:", reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: True)
+def handle_callbacks(call):
+    global exchange_rate, total_orders_global
+    user_id = call.from_user.id
+    data = call.data
+
+    if data == 'show_global_orders_count':
+        bot.answer_callback_query(call.id, f"إجمالي الطلبات المنفذة في المتجر: {total_orders_global}")
+        return
+
+    if user_id == ADMIN_ID:
+        if data == 'admin_stats':
+            total_users = len(users_db)
+            bot.answer_callback_query(call.id, f"عدد المستخدمين: {total_users}\nإجمالي الطلبات: {total_orders_global}", show_alert=True)
+            return
+        elif data == 'admin_set_rate':
+            admin_states['state'] = 'waiting_new_rate'
+            bot.send_message(user_id, f"سعر الصرف الحالي هو: {exchange_rate:,} ل.س\nأرسل سعر الصرف الجديد برقم صحيح:")
+            return
+        elif data == 'admin_add_bal':
+            admin_states['state'] = 'waiting_add_balance'
+            bot.send_message(user_id, "أرسل الآيدي والمبلغ بالشكل التالي:\n`الايدي المبلغ`", parse_mode='Markdown')
+            return
+        elif data == 'admin_deduct_bal':
+            admin_states['state'] = 'waiting_deduct_balance'
+            bot.send_message(user_id, "أرسل الآيدي والمبلغ بالشكل التالي:\n`الايدي المبلغ`", parse_mode='Markdown')
+            return
+        elif data == 'admin_broadcast':
+            admin_states['state'] = 'waiting_broadcast_msg'
+            bot.send_message(user_id, "أرسل النص المراد إذاعته لجميع المستخدمين:")
+            return
+
+    if data.startswith("cat_"):
+        cat_name = data.replace("cat_", "")
+        if cat_name in store_categories:
+            games = store_categories[cat_name]
+            if not games:
+                bot.answer_callback_query(call.id, "لا توجد خدمات حالياً في هذا القسم.", show_alert=True)
+                return
+            markup = types.InlineKeyboardMarkup()
+            for g_name in games.keys():
+                markup.add(types.InlineKeyboardButton(g_name, callback_data=f"game_{cat_name}_{g_name}"))
+            bot.edit_message_text("اختر اللعبة أو الخدمة:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+
+    elif data.startswith("game_"):
+        parts = data.split("_", 2)
+        cat_name = parts[1]
+        game_name = parts[2]
+        
+        if game_name == "PUBG Mobile 🕹":
+            try:
+                bot.delete_message(call.message.chat.id, call.message.message_id)
+            except Exception:
+                pass
+            pubg_image_url = "https://upload.wikimedia.org/wikipedia/en/thumb/9/9f/Pubg_mobile_logo.png/220px-Pubg_mobile_logo.png"
+            markup = types.InlineKeyboardMarkup()
+            sections = store_categories[cat_name][game_name].keys()
+            for sec in sections:
+                markup.add(types.InlineKeyboardButton(sec, callback_data=f"sec_{cat_name}_{game_name}_{sec}"))
+            bot.send_photo(call.message.chat.id, pubg_image_url, caption="🎮 أهلاً بك في قسم شحن PUBG Mobile\nاختر نوع الشحن المطلوب:", reply_markup=markup)
+        else:
+            sections = store_categories[cat_name][game_name].keys()
+            markup = types.InlineKeyboardMarkup()
+            for sec in sections:
+                markup.add(types.InlineKeyboardButton(sec, callback_data=f"sec_{cat_name}_{game_name}_{sec}"))
+            bot.edit_message_text("اختر القسم الفرعي:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+
+    elif data.startswith("sec_"):
+        parts = data.split("_", 3)
+        cat_name = parts[1]
+        game_name = parts[2]
+        sec_name = parts[3]
+        
+        items = store_categories[cat_name][game_name][sec_name]
+        markup = types.InlineKeyboardMarkup()
+        for idx, item in enumerate(items):
+            p_formatted = format_price(user_id, item['price'])
+            markup.add(types.InlineKeyboardButton(f"{item['name']} - {p_formatted}", callback_data=f"item_{cat_name}_{game_name}_{sec_name}_{idx}"))
+        
+        try:
+            bot.edit_message_text("اختر المنتج المناسب:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+        except Exception:
+            bot.send_message(call.message.chat.id, "اختر المنتج المناسب:", reply_markup=markup)
+
+    elif data.startswith("item_"):
+        parts = data.split("_", 4)
+        cat_name = parts[1]
+        game_name = parts[2]
+        sec_name = parts[3]
+        item_idx = int(parts[4])
+        
+        item = store_categories[cat_name][game_name][sec_name][item_idx]
+        user_temp_order[user_id] = {'item': item, 'sec': sec_name}
+        
+        if sec_name in ["اكواد 📱"]:
+            markup = types.InlineKeyboardMarkup()
+            markup.add(types.InlineKeyboardButton("✅ تأكيد الشراء", callback_data="confirm_code_order"))
+            p_formatted = format_price(user_id, item['price'])
+            bot.answer_callback_query(call.id)
+            bot.send_message(call.message.chat.id, f"📦 منتج: {item['name']}\n💰 السعر: {p_formatted}\n\nاضغط لتأكيد الشراء من رصيدك:")
+            bot.send_message(call.message.chat.id, "اضغط تأكيد لتنفيذ الطلب:", reply_markup=markup)
+        else:
+            bot.answer_callback_query(call.id)
+            bot.send_message(call.message.chat.id, f"📦 لقد اخترت: {item['name']}\n\nيرجى إرسال الآيدي (Player ID) الخاص بك الآن:")
+            bot.register_next_step_handler(call.message, process_player_id)
+
+def process_player_id(message):
+    global total_orders_global
+    user_id = message.from_user.id
+    player_id = message.text.strip()
+    
+    if user_id not in user_temp_order:
+        bot.reply_to(message, "⚠️ حدث خطأ أو انتهت الجلسة. أعد المحاولة من جديد.")
+        return
+        
+    order_info = user_temp_order[user_id]
+    item = order_info['item']
+    
+    if users_db[user_id]['balance'] < item['price']:
+        bot.reply_to(message, f"❌ رصيدك غير كافٍ لإتمام عملية الشراء.\nرصيدك الحالي: {format_price(user_id, users_db[user_id]['balance'])}\nسعر المنتج: {format_price(user_id, item['price'])}")
+        return
+        
+    bot.reply_to(message, "⏳ جاري تنفيذ الطلب عبر السيرفر، يرجى الانتظار...")
+    
+    res = create_mhd_order(item['id'], 1, player_id)
+    if res.get('status') == 'SUCCESS' or res.get('status') == 'PENDING' or 'order_uuid' in res:
+        users_db[user_id]['balance'] -= item['price']
+        users_db[user_id]['spent'] += item['price']
+        users_db[user_id]['orders_count'] += 1
+        total_orders_global += 1
+        
+        bot.reply_to(message, f"✅ تم إرسال الطلب بنجاح!\n🆔 الآيدي: `{player_id}`\n📦 المنتج: {item['name']}\n💰 السعر المخصوم: {format_price(user_id, item['price'])}", parse_mode='Markdown')
+    else:
+        err_msg = res.get('message', 'خطأ غير معروف')
+        bot.reply_to(message, f"❌ فشل تنفيذ الطلب من الخادم:\n{err_msg}")
+
+@bot.callback_query_handler(func=lambda call: call.data == 'confirm_code_order')
+def confirm_code_order_callback(call):
+    global total_orders_global
+    user_id = call.from_user.id
+    if user_id not in user_temp_order:
+        bot.answer_callback_query(call.id, "انتهت الجلسة، أعد المحاولة.", show_alert=True)
+        return
+        
+    order_info = user_temp_order[user_id]
+    item = order_info['item']
+    
+    if users_db[user_id]['balance'] < item['price']:
+        bot.answer_callback_query(call.id, "رصيدك غير كافٍ!", show_alert=True)
+        return
+        
+    bot.answer_callback_query(call.id, "جاري استخراج الكود...")
+    res = create_mhd_code_order(item['id'], 1)
+    
+    if res.get('status') == 'SUCCESS' or 'order_uuid' in res:
+        users_db[user_id]['balance'] -= item['price']
+        users_db[user_id]['spent'] += item['price']
+        users_db[user_id]['orders_count'] += 1
+        total_orders_global += 1
+        
+        code_result = res.get('code', res.get('message', 'تم الشراء بنجاح ولم يرجع كود نصي مباشر، راجع الإدارة'))
+        bot.send_message(call.message.chat.id, f"✅ تم شراء الكود بنجاح!\n📦 المنتج: {item['name']}\n🔑 الكود: `{code_result}`", parse_mode='Markdown')
+    else:
+        err_msg = res.get('message', 'خطأ غير معروف')
+        bot.send_message(call.message.chat.id, f"❌ فشل تنفيذ الطلب:\n{err_msg}")
+
+if __name__ == "__main__":
+    def run_flask():
+        app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+
+    t = Thread(target=run_flask)
+    t.start()
+    bot.infinity_polling()
