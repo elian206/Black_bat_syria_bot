@@ -25,6 +25,13 @@ users_db = {}
 total_orders_global = 142
 exchange_rate = 15000
 
+# الأقسام الافتراضية والمنتجات المضافة من قبل الأدمن
+store_categories = {
+    "🎮 شحن العاب": [],
+    "📱 شحن تطبيقات": [],
+    "🛡 دعم حسابات": []
+}
+
 pending_topup = {}
 admin_states = {}
 user_temp_order = {}
@@ -201,12 +208,6 @@ def handle_text_messages(message):
                 
                 admin_states.clear()
                 bot.reply_to(message, f"✅ تمت إضافة المبلغ ({amount}) بنجاح للمستخدم `{target_id}`.\nرصيده الحالي: {current_bal}", parse_mode='Markdown')
-                
-                try:
-                    bot.send_message(target_id, f"تم اضافة المبلغ: {amount}\nرصيدك الحالي: {current_bal}\nاستمتع بطلب من خدماتنا")
-                except Exception:
-                    pass
-                
                 show_admin_panel(message)
                 return
             except Exception:
@@ -240,17 +241,38 @@ def handle_text_messages(message):
                 
                 admin_states.clear()
                 bot.reply_to(message, f"✅ تم خصم المبلغ ({amount}) بنجاح من المستخدم `{target_id}`.\nرصيده الحالي: {current_bal}", parse_mode='Markdown')
-                
-                try:
-                    bot.send_message(target_id, f"تم خصم مبلغ {amount} من رصيدك.\nرصيدك الحالي: {current_bal}")
-                except Exception:
-                    pass
-                
                 show_admin_panel(message)
                 return
             except Exception:
                 bot.reply_to(message, "⚠️ يرجى إرسال مبلغ صحيح.")
                 return
+
+        elif admin_st == 'waiting_product_details':
+            # تنسيق الإدخال: ID_المنتج | الاسم | السعر
+            text = message.text.strip()
+            parts = [p.strip() for p in text.split('|')]
+            if len(parts) == 3:
+                try:
+                    p_id = int(parts[0])
+                    p_name = parts[1]
+                    p_price = float(parts[2])
+                    cat_name = admin_states.get('target_category')
+                    
+                    if cat_name in store_categories:
+                        store_categories[cat_name].append({
+                            'id': p_id,
+                            'name': p_name,
+                            'price': p_price,
+                            'available': True
+                        })
+                        admin_states.clear()
+                        bot.reply_to(message, f"✅ تم إضافة المنتج بنجاح إلى قسم ({cat_name})!")
+                        show_admin_panel(message)
+                        return
+                except Exception:
+                    pass
+            bot.reply_to(message, "⚠️ الصيغة غير صحيحة. يرجى الإرسال بهذا الشكل تماماً:\n`ID_المنتج | اسم المنتج | السعر`\nمثال:\n`105 | باقة شدات ببجي | 5.5`", parse_mode='Markdown')
+            return
 
     if user_id in pending_topup:
         state = pending_topup[user_id].get('state')
@@ -299,7 +321,7 @@ def handle_text_messages(message):
         current_curr = users_db[user_id]['currency']
         if current_curr == 'USD':
             users_db[user_id]['currency'] = 'SYP'
-            bot.reply_to(message, "تم تغيير العملة بنجاح إلى (الليرة السورية 🇸🇾). ستظهر الأسعار والرصيد بناءً على سعر الصرف الحالي.")
+            bot.reply_to(message, "تم تغيير العملة بنجاح إلى (الليرة السورية 🇸🇾).")
         else:
             users_db[user_id]['currency'] = 'USD'
             bot.reply_to(message, "تم تغيير العملة بنجاح إلى (الدولار الأمريكي 💵).")
@@ -308,25 +330,14 @@ def handle_text_messages(message):
         return
 
     if message.text == '🛍 خدمات متجرنا':
-        products = get_mhd_products()
-        if not products:
-            bot.reply_to(message, "عذراً، حدث خطأ أثناء جلب المنتجات والخدمات من الموقع حالياً.")
-            return
-
-        markup_services = types.InlineKeyboardMarkup()
-        for prod in products[:15]:
-            if prod.get("available", True):
-                curr = users_db.get(user_id, {}).get('currency', 'USD')
-                p_price = prod['price']
-                if curr == 'SYP':
-                    price_display = f"{p_price * exchange_rate:,.0f} ل.س"
-                else:
-                    price_display = f"${p_price}"
-
-                btn_text = f"{prod['name']} ({price_display})"
-                markup_services.add(types.InlineKeyboardButton(btn_text, callback_data=f"buy_{prod['id']}"))
+        markup_cats = types.InlineKeyboardMarkup()
+        for cat_name in store_categories.keys():
+            markup_cats.add(types.InlineKeyboardButton(cat_name, callback_data=f"cat_{cat_name}"))
         
-        bot.reply_to(message, "اهلا بك في خدماتنا، نتمنا ان تعجبك.\nاختر الخدمة أو المنتج الذي تريده ⏬", reply_markup=markup_services)
+        # خيار إضافي لجلب المنتجات من موقع MHD Store مباشرة إن أردت
+        markup_cats.add(types.InlineKeyboardButton("🌐 منتجات موقع MHD API", callback_data="cat_api_products"))
+
+        bot.reply_to(message, "اختر القسم المطلوب لتصفح الخدمات والمنتجات ⏬", reply_markup=markup_cats)
 
     elif message.text == '👤 حسابك':
         u_data = users_db.get(user_id, {'name': message.from_user.first_name, 'balance': 0.0, 'spent': 0.0, 'orders': 0, 'currency': 'USD'})
@@ -379,18 +390,10 @@ def show_admin_panel(message):
     
     markup_admin = types.InlineKeyboardMarkup()
     markup_admin.add(types.InlineKeyboardButton(toggle_btn_text, callback_data='adm_toggle_bot'))
+    markup_admin.add(types.InlineKeyboardButton('➕ اضافة منتج داخل قسم', callback_data='adm_add_product'))
     markup_admin.add(types.InlineKeyboardButton('➕ اضافة رصيد يدوي', callback_data='adm_add_balance'))
     markup_admin.add(types.InlineKeyboardButton('➖ خصم رصيد يدوي', callback_data='adm_sub_balance'))
-    markup_admin.add(types.InlineKeyboardButton('➕ اضافة أزرار', callback_data='adm_add_btn'))
-    markup_admin.add(types.InlineKeyboardButton('❌ حذف أزرار', callback_data='adm_del_btn'))
-    markup_admin.add(types.InlineKeyboardButton('💳 طرق التعبئة', callback_data='adm_pay_methods'))
-    markup_admin.add(types.InlineKeyboardButton('👥 سجل جميع العملاء', callback_data='adm_users_list'))
-    markup_admin.add(types.InlineKeyboardButton('👑 إضافة أدمن', callback_data='adm_add_admin'))
-    markup_admin.add(types.InlineKeyboardButton('🔗 تغيير ربط المواقع', callback_data='adm_change_link'))
-    markup_admin.add(types.InlineKeyboardButton('📢 رسالة للجميع', callback_data='adm_broadcast'))
     markup_admin.add(types.InlineKeyboardButton('💱 تغيير سعر الصرف', callback_data='adm_exchange_rate'))
-    markup_admin.add(types.InlineKeyboardButton('🚫 حظر مستخدم', callback_data='adm_ban'))
-    markup_admin.add(types.InlineKeyboardButton('✅ فك الحظر', callback_data='adm_unban'))
     
     bot.send_message(message.chat.id, admin_text, parse_mode='Markdown', reply_markup=markup_admin)
 
@@ -401,6 +404,40 @@ def handle_callbacks(call):
     user_id = call.from_user.id
     
     if not bot_is_active and user_id != ADMIN_ID:
+        return
+
+    if data.startswith('cat_'):
+        cat_key = data.replace('cat_', '')
+        bot.answer_callback_query(call.id)
+        
+        if cat_key == 'api_products':
+            products = get_mhd_products()
+            if not products:
+                bot.send_message(call.message.chat.id, "عذراً، لا توجد منتجات متاحة حالياً عبر الـ API.")
+                return
+            markup_prods = types.InlineKeyboardMarkup()
+            for p in products[:15]:
+                markup_prods.add(types.InlineKeyboardButton(f"{p['name']} - ${p['price']}", callback_data=f"buy_{p['id']}"))
+            bot.send_message(call.message.chat.id, "🌐 منتجات موقع MHD API المتاحة:", reply_markup=markup_prods)
+            return
+
+        if cat_key in store_categories:
+            prods = store_categories[cat_key]
+            if not prods:
+                bot.send_message(call.message.chat.id, f"عذراً، لا توجد منتجات مضافة حالياً في قسم ({cat_key}).")
+                return
+            
+            markup_prods = types.InlineKeyboardMarkup()
+            curr = users_db.get(user_id, {}).get('currency', 'USD')
+            for p in prods:
+                p_price = p['price']
+                if curr == 'SYP':
+                    price_display = f"{p_price * exchange_rate:,.0f} ل.س"
+                else:
+                    price_display = f"${p_price}"
+                markup_prods.add(types.InlineKeyboardButton(f"{p['name']} ({price_display})", callback_data=f"buy_{p['id']}"))
+            
+            bot.send_message(call.message.chat.id, f"📁 منتجات قسم ({cat_key}):", reply_markup=markup_prods)
         return
 
     if data == 'pay_sham_usd':
@@ -433,7 +470,7 @@ def handle_callbacks(call):
             f"تحويل Syriatel Cash ليرة سورية 🇸🇾\n"
             f"كل 1$ = {exchange_rate:,} ل.س\n\n"
             f"كود تحويل ⏪ 92189062 \n"
-            f"⚠️ التحويل حصرا من خيار (تحويل يدوي) اذا قمت بتحويل رصيد عادي لن يتم الموافقة ع طلب التعبئة."
+            f"⚠️ التحويل حصرا من خيار (تحويل يدوي)."
         )
         bot.send_message(call.message.chat.id, syriatel_msg)
         pending_topup[user_id] = {'state': 'waiting_amount', 'curr_type': 'SYP', 'method_key': 'syriatel', 'method_name': 'Syriatel Cash'}
@@ -444,9 +481,7 @@ def handle_callbacks(call):
         mtn_msg = (
             f"تحويل MTN Cash ليرة سورية 🇸🇾\n"
             f"كل 1$ = {exchange_rate:,} ل.س\n\n"
-            f"كود تحويل ⏬\n"
-            f" 8338 3112 0672 4992 \n"
-            f"⚠️ التحويل حصرا من خيار (عن طريق رقم المحفظة) اذا قمت بتحويل رصيد عادي لن يتم الموافقة ع طلب التعبئة."
+            f"كود تحويل ⏬\n 8338 3112 0672 4992"
         )
         bot.send_message(call.message.chat.id, mtn_msg)
         pending_topup[user_id] = {'state': 'waiting_amount', 'curr_type': 'SYP', 'method_key': 'mtn', 'method_name': 'MTN Cash'}
@@ -493,15 +528,10 @@ def handle_callbacks(call):
             disp_bal = f"{total_bal} $"
 
         bot.answer_callback_query(call.id, "تمت الموافقة وإضافة الرصيد بنجاح!")
-        bot.edit_message_text(f"{call.message.text}\n\n✅ **الحالة:** تم قبول الطلب من قبل الأدمن وتمت إضافة ما يعادل ({added_usd:.2f} $) بنجاح.", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode='Markdown')
+        bot.edit_message_text(f"{call.message.text}\n\n✅ **الحالة:** تم قبول الطلب وإضافة ما يعادل ({added_usd:.2f} $) بنجاح.", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode='Markdown')
         
         try:
-            client_msg = (
-                f"تم اضافة المبلغ: {final_amount_to_process:g} {'$' if curr_type=='USD' else 'ل.س'}\n"
-                f"رصيدك الان {disp_bal}\n"
-                f"استمتع بطلب من خدماتنا"
-            )
-            bot.send_message(target_user_id, client_msg)
+            bot.send_message(target_user_id, f"تم اضافة المبلغ برصيدك الان {disp_bal}\nاستمتع بطلب من خدماتنا")
         except Exception:
             pass
 
@@ -509,28 +539,35 @@ def handle_callbacks(call):
         if user_id != ADMIN_ID:
             bot.answer_callback_query(call.id, "هذا الزر للأدمن فقط!", show_alert=True)
             return
-            
         parts = data.split('_')
         target_user_id = int(parts[2])
-        
         bot.answer_callback_query(call.id, "تم رفض الطلب.")
         bot.edit_message_text(f"{call.message.text}\n\n❌ **الحالة:** تم رفض الطلب من قبل الإدارة.", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode='Markdown')
-        
         try:
-            bot.send_message(target_user_id, "عذراً، تم رفض طلب تعبئة الرصيد من قبل الإدارة. يرجى التأكد من معلومات ورقم التحويل.")
+            bot.send_message(target_user_id, "عذراً، تم رفض طلب تعبئة الرصيد من قبل الإدارة.")
         except Exception:
             pass
 
     elif data.startswith('buy_'):
         product_id = int(data.split('_')[1])
-        products = get_mhd_products()
-
+        
+        # البحث في المنتجات المضافة محلياً أو عبر API
         selected_product = None
-        if products:
-            for p in products:
+        for cat_list in store_categories.values():
+            for p in cat_list:
                 if p['id'] == product_id:
                     selected_product = p
                     break
+            if selected_product:
+                break
+        
+        if not selected_product:
+            api_prods = get_mhd_products()
+            if api_prods:
+                for p in api_prods:
+                    if p['id'] == product_id:
+                        selected_product = p
+                        break
 
         if not selected_product:
             bot.answer_callback_query(call.id, "المنتج غير موجود أو غير متوفر.")
@@ -595,19 +632,26 @@ def handle_callbacks(call):
             bot.send_message(call.message.chat.id, "أرسل ايدي (ID) العميل المراد خصم الرصيد منه ⏬")
             return
 
-        actions_map = {
-            'adm_add_btn': "أدخل تفاصيل الزر الجديد المراد إضافته.",
-            'adm_del_btn': "اختر الزر المراد حذفه من القوائم.",
-            'adm_pay_methods': "إدارة وتعديل طرق تعبئة الرصيد المتاحة.",
-            'adm_users_list': f"📊 إجمالي العملاء المسجلين: {len(users_db)} مستخدم.",
-            'adm_add_admin': "أرسل آيدي المستخدم الجديد لتعيينه كأدمن.",
-            'adm_change_link': "أرسل رابط الموقع أو المنصة البديل للربط.",
-            'adm_broadcast': "أرسل النص المراد بثه وإرساله لجميع العملاء داخل البوت.",
-            'adm_ban': "أرسل آيدي المستخدم المراد حظره.",
-            'adm_unban': "أرسل آيدي المستخدم المراد فك الحظر عنه."
-        }
+        elif data == 'adm_add_product':
+            bot.answer_callback_query(call.id)
+            markup_cat_select = types.InlineKeyboardMarkup()
+            for cat_name in store_categories.keys():
+                markup_cat_select.add(types.InlineKeyboardButton(cat_name, callback_data=f"selectcat_{cat_name}"))
+            bot.send_message(call.message.chat.id, "اختر القسم الذي تريد إضافة المنتج إليه ⏬", reply_markup=markup_cat_select)
+            return
+
+    elif data.startswith('selectcat_'):
+        if user_id != ADMIN_ID:
+            return
+        cat_name = data.replace('selectcat_', '')
+        admin_states['target_category'] = cat_name
+        admin_states['state'] = 'waiting_product_details'
         bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, f"🛠 [لوحة التحكم]:\n{actions_map.get(data, 'جاري التنفيذ...')}")
+        bot.send_message(
+            call.message.chat.id,
+            f"لقد اخترت قسم: **{cat_name}**\n\nالآن أرسل تفاصيل المنتج بهذا الشكل تماماً:\n`ID_المنتج | اسم المنتج | السعر بالدولار`\n\nمثال:\n`120 | شدات 60 | 1.2`",
+            parse_mode='Markdown'
+        )
 
 def process_player_id(message):
     user_id = message.from_user.id
