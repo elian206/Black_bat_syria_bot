@@ -281,7 +281,12 @@ def handle_text_messages(message):
                         return
                 except Exception:
                     pass
-            bot.reply_to(message, "⚠️ الصيغة غير صحيحة. يرجى الإرسال بهذا الشكل تماماً:\n`ID_المنتج | اسم المنتج | السعر`\nمثال:\n`105 | ببجي موبايل - 60 شدة | 1.2`", parse_mode='Markdown')
+            
+            # زر الإلغاء ليظهر مجدداً مع رسالة الخطأ لتسهيل التراجع
+            markup_cancel = types.InlineKeyboardMarkup()
+            markup_cancel.add(types.InlineKeyboardButton('❌ إلغاء العملية', callback_data='cancel_admin_action'))
+            
+            bot.reply_to(message, "⚠️ الصيغة غير صحيحة. يرجى الإرسال بهذا الشكل تماماً:\n`ID_المنتج | اسم المنتج | السعر`\nمثال:\n`105 | ببجي موبايل - 60 شدة | 1.2`", parse_mode='Markdown', reply_markup=markup_cancel)
             return
 
     if user_id in pending_topup:
@@ -412,6 +417,19 @@ def handle_callbacks(call):
     user_id = call.from_user.id
     
     if not bot_is_active and user_id != ADMIN_ID:
+        return
+
+    # زر إلغاء العملية للأدمن
+    if data == 'cancel_admin_action':
+        if user_id != ADMIN_ID:
+            return
+        admin_states.clear()
+        bot.answer_callback_query(call.id, "تم الإلغاء بنجاح.")
+        try:
+            bot.edit_message_text("❌ **تم إيقاف وإلغاء عملية الإضافة.**", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode='Markdown')
+        except Exception:
+            pass
+        show_admin_panel(call.message)
         return
 
     if data == 'cat_api_products':
@@ -660,10 +678,16 @@ def handle_callbacks(call):
         admin_states['target_category'] = cat_name
         admin_states['state'] = 'waiting_product_details'
         bot.answer_callback_query(call.id)
+        
+        # إضافة زر الإلغاء هنا تحت رسالة طلب إدخال البيانات المطلوبة
+        markup_cancel = types.InlineKeyboardMarkup()
+        markup_cancel.add(types.InlineKeyboardButton('❌ إلغاء العملية', callback_data='cancel_admin_action'))
+
         bot.send_message(
             call.message.chat.id,
             f"لقد اخترت قسم: **{cat_name}**\n\nالآن أرسل تفاصيل المنتج بهذا الشكل تماماً:\n`ID_المنتج | اسم المنتج | السعر بالدولار`\n\nمثال:\n`105 | ببجي موبايل - 60 شدة | 1.2`\n\n*(يمكنك معرفة ID المنتج والسعر بدقة من زر 'منتجات موقع MHD API' في لوحة الأدمن)*",
-            parse_mode='Markdown'
+            parse_mode='Markdown',
+            reply_markup=markup_cancel
         )
 
 def process_player_id(message):
