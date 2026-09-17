@@ -18,7 +18,6 @@ ADMIN_ID = 8534087775
 CHANNEL_USERNAME = '@black1_bat_syria'
 
 API_BASE = "https://mhd-game.com/api"
-# تم وضع التوكن الصحيح هنا مباشرة
 API_TOKEN = "Fluf9aJYBrtQ1a9ywuqrcMh2M4A8UIa8MKsgbyUk0PkYi301WuCqtLtGn4GO"
 api_headers = {"api-token": API_TOKEN}
 
@@ -26,7 +25,6 @@ users_db = {}
 total_orders_global = 142
 exchange_rate = 15000
 
-# الأقسام الأساسية والمنتجات المضافة من قبل الأدمن
 store_categories = {
     "🎮 شحن العاب": [],
     "📱 شحن تطبيقات": [],
@@ -406,13 +404,61 @@ def show_admin_panel(message):
     
     markup_admin = types.InlineKeyboardMarkup()
     markup_admin.add(types.InlineKeyboardButton(toggle_btn_text, callback_data='adm_toggle_bot'))
-    markup_admin.add(types.InlineKeyboardButton('🌐 منتجات موقع MHD API', callback_data='cat_api_products'))
+    markup_admin.add(types.InlineKeyboardButton('🌐 منتجات موقع MHD API', callback_data='api_page_0'))
     markup_admin.add(types.InlineKeyboardButton('➕ اضافة منتج داخل قسم', callback_data='adm_add_product'))
     markup_admin.add(types.InlineKeyboardButton('➕ اضافة رصيد يدوي', callback_data='adm_add_balance'))
     markup_admin.add(types.InlineKeyboardButton('➖ خصم رصيد يدوي', callback_data='adm_sub_balance'))
     markup_admin.add(types.InlineKeyboardButton('💱 تغيير سعر الصرف', callback_data='adm_exchange_rate'))
     
     bot.send_message(message.chat.id, admin_text, parse_mode='Markdown', reply_markup=markup_admin)
+
+def send_api_products_page(chat_id, message_id=None, page=0):
+    products = get_mhd_products()
+    if not products:
+        if message_id:
+            bot.answer_callback_query(message_id, "عذراً، لا توجد منتجات متاحة حالياً عبر الـ API.", show_alert=True)
+        else:
+            bot.send_message(chat_id, "عذراً، لا توجد منتجات متاحة حالياً عبر الـ API.")
+        return
+
+    items_per_page = 10
+    total_products = len(products)
+    total_pages = (total_products + items_per_page - 1) // items_per_page
+    
+    if page < 0:
+        page = 0
+    elif page >= total_pages:
+        page = total_pages - 1
+
+    start_idx = page * items_per_page
+    end_idx = start_idx + items_per_page
+    page_products = products[start_idx:end_idx]
+
+    markup_prods = types.InlineKeyboardMarkup()
+    for p in page_products:
+        markup_prods.add(types.InlineKeyboardButton(f"{p['name']} - ${p['price']} (ID: {p['id']})", callback_data=f"buy_{p['id']}"))
+
+    nav_buttons = []
+    if page > 0:
+        nav_buttons.append(types.InlineKeyboardButton('⬅️ السابق', callback_data=f"api_page_{page - 1}"))
+    
+    nav_buttons.append(types.InlineKeyboardButton(f"📄 {page + 1} / {total_pages}", callback_data="noop"))
+
+    if page < total_pages - 1:
+        nav_buttons.append(types.InlineKeyboardButton('التالي ➡️', callback_data=f"api_page_{page + 1}"))
+    
+    if nav_buttons:
+        markup_prods.row(*nav_buttons)
+
+    text_msg = f"🌐 **منتجات موقع MHD API** (الصفحة {page + 1} من {total_pages}):"
+    
+    if message_id:
+        try:
+            bot.edit_message_text(text_msg, chat_id=chat_id, message_id=message_id, reply_markup=markup_prods, parse_mode='Markdown')
+        except Exception:
+            bot.send_message(chat_id, text_msg, reply_markup=markup_prods, parse_mode='Markdown')
+    else:
+        bot.send_message(chat_id, text_msg, reply_markup=markup_prods, parse_mode='Markdown')
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
@@ -421,6 +467,10 @@ def handle_callbacks(call):
     user_id = call.from_user.id
     
     if not bot_is_active and user_id != ADMIN_ID:
+        return
+
+    if data == 'noop':
+        bot.answer_callback_query(call.id)
         return
 
     if data == 'cancel_admin_action':
@@ -435,22 +485,13 @@ def handle_callbacks(call):
         show_admin_panel(call.message)
         return
 
-    if data == 'cat_api_products':
+    if data.startswith('api_page_'):
         if user_id != ADMIN_ID:
             bot.answer_callback_query(call.id, "هذا الزر مخصص للأدمن فقط!", show_alert=True)
             return
-        
-        products = get_mhd_products()
-        if not products:
-            bot.answer_callback_query(call.id, "عذراً، لا توجد منتجات متاحة حالياً عبر الـ API.", show_alert=True)
-            return
-        
-        markup_prods = types.InlineKeyboardMarkup()
-        for p in products[:25]:
-            markup_prods.add(types.InlineKeyboardButton(f"{p['name']} - ${p['price']} (ID: {p['id']})", callback_data=f"buy_{p['id']}"))
-        
+        page_num = int(data.replace('api_page_', ''))
         bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, "🌐 جميع خدمات ومنتجات موقع MHD API المتاحة (مع المعرفات والأسعار):", reply_markup=markup_prods)
+        send_api_products_page(call.message.chat.id, call.message.message_id, page_num)
         return
 
     if data.startswith('cat_'):
@@ -740,7 +781,7 @@ def process_player_id(message):
         users_db[user_id]['spent'] -= price
         users_db[user_id]['orders'] -= 1
         
-        err_msg = response.get("message", "خطأ غير معروف") if response else "فشل الاتصال بالموقع"
+        `err_msg` = response.get("message", "خطأ غير معروف") if response else "فشل الاتصال بالموقع"
         bot.send_message(message.chat.id, f"❌ **فشل تنفيذ الطلب من الموقع:**\n{err_msg}\n\n💰 تم إرجاع المبلغ إلى رصيدك.", parse_mode="Markdown")
 
     del user_temp_order[user_id]
