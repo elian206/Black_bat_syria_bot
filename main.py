@@ -2,6 +2,9 @@ import telebot
 from telebot import types
 from flask import Flask
 from threading import Thread
+import requests
+import uuid
+import re
 
 TOKEN = '8909052904:AAHEsWa85CbV5Kwxs4Y1kG7h7TMtHpx-TMw'
 bot = telebot.TeleBot(TOKEN)
@@ -14,14 +17,43 @@ except Exception:
 ADMIN_ID = 8534087775
 CHANNEL_USERNAME = '@black1_bat_syria'
 
+API_BASE = "https://mhd-game.com/api"
+API_TOKEN = "fluf9aJYBrtQ1a9yuuqrcMh2M4A8Ui8MKsgbyUk0PkYi301WuCqtLtGn4GO"
+api_headers = {"api-token": API_TOKEN}
+
 users_db = {}
 total_orders_global = 142
 exchange_rate = 15000
 
 pending_topup = {}
 admin_states = {}
+user_temp_order = {}
 
 bot_is_active = True
+
+def get_mhd_products():
+    try:
+        url = f"{API_BASE}/client/api/products"
+        response = requests.get(url, headers=api_headers)
+        if response.status_code == 200:
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching products: {e}")
+    return None
+
+def create_mhd_order(product_id, quantity, player_id):
+    try:
+        unique_order_uuid = str(uuid.uuid4())
+        url = f"{API_BASE}/client/api/newOrder/{product_id}"
+        params = {
+            "qty": quantity,
+            "playerId": player_id,
+            "order_uuid": unique_order_uuid,
+        }
+        response = requests.get(url, headers=api_headers, params=params)
+        return response.json()
+    except Exception as e:
+        return {"status": "ERROR", "message": str(e)}
 
 def check_subscription(user_id):
     try:
@@ -129,7 +161,6 @@ def handle_text_messages(message):
         if admin_st == 'waiting_new_rate':
             text = message.text.strip()
             try:
-                import re
                 numbers = re.findall(r'\d+', text)
                 if numbers:
                     new_rate = int(''.join(numbers))
@@ -158,7 +189,6 @@ def handle_text_messages(message):
         elif admin_st == 'waiting_add_amount':
             text = message.text.strip()
             try:
-                import re
                 numbers = re.findall(r'\d+\.?\d*', text)
                 amount = float(numbers[0]) if numbers else 0.0
                 target_id = admin_states.get('target_id')
@@ -198,7 +228,6 @@ def handle_text_messages(message):
         elif admin_st == 'waiting_sub_amount':
             text = message.text.strip()
             try:
-                import re
                 numbers = re.findall(r'\d+\.?\d*', text)
                 amount = float(numbers[0]) if numbers else 0.0
                 target_id = admin_states.get('target_id')
@@ -279,13 +308,25 @@ def handle_text_messages(message):
         return
 
     if message.text == '🛍 خدمات متجرنا':
+        products = get_mhd_products()
+        if not products:
+            bot.reply_to(message, "عذراً، حدث خطأ أثناء جلب المنتجات والخدمات من الموقع حالياً.")
+            return
+
         markup_services = types.InlineKeyboardMarkup()
-        markup_services.add(types.InlineKeyboardButton('🕹 شحن ألعاب', callback_data='service_games'))
-        markup_services.add(types.InlineKeyboardButton('📱 شحن تطبيقات', callback_data='service_apps'))
-        markup_services.add(types.InlineKeyboardButton('🤳 دعم حسابات', callback_data='service_support'))
-        markup_services.add(types.InlineKeyboardButton('📲 بيع حسابات', callback_data='service_accounts'))
+        for prod in products[:15]:
+            if prod.get("available", True):
+                curr = users_db.get(user_id, {}).get('currency', 'USD')
+                p_price = prod['price']
+                if curr == 'SYP':
+                    price_display = f"{p_price * exchange_rate:,.0f} ل.س"
+                else:
+                    price_display = f"${p_price}"
+
+                btn_text = f"{prod['name']} ({price_display})"
+                markup_services.add(types.InlineKeyboardButton(btn_text, callback_data=f"buy_{prod['id']}"))
         
-        bot.reply_to(message, "اهلا بك في خدماتنا، نتمنا ان تعجبك.\nاختر الخدمة التي تريدها ⏬", reply_markup=markup_services)
+        bot.reply_to(message, "اهلا بك في خدماتنا، نتمنا ان تعجبك.\nاختر الخدمة أو المنتج الذي تريده ⏬", reply_markup=markup_services)
 
     elif message.text == '👤 حسابك':
         u_data = users_db.get(user_id, {'name': message.from_user.first_name, 'balance': 0.0, 'spent': 0.0, 'orders': 0, 'currency': 'USD'})
@@ -384,24 +425,24 @@ def handle_callbacks(call):
         )
         bot.send_message(call.message.chat.id, sham_msg)
         pending_topup[user_id] = {'state': 'waiting_amount', 'curr_type': 'SYP', 'method_key': 'sham_syp', 'method_name': 'Sham Cash (SYP)'}
-        bot.send_message(call.message.chat.id, "ادخل المبلغ الزي ارسلته ⏬")
+        bot.send_message(call.message.chat.id, "ادخل المبلغ الذي ارسلته ⏬")
 
     elif data == 'pay_syriatel':
         bot.answer_callback_query(call.id)
         syriatel_msg = (
-            f"تحويل Syriatel Cash ليرة سورية 💵\n"
+            f"تحويل Syriatel Cash ليرة سورية 🇸🇾\n"
             f"كل 1$ = {exchange_rate:,} ل.س\n\n"
             f"كود تحويل ⏪ 92189062 \n"
             f"⚠️ التحويل حصرا من خيار (تحويل يدوي) اذا قمت بتحويل رصيد عادي لن يتم الموافقة ع طلب التعبئة."
         )
         bot.send_message(call.message.chat.id, syriatel_msg)
         pending_topup[user_id] = {'state': 'waiting_amount', 'curr_type': 'SYP', 'method_key': 'syriatel', 'method_name': 'Syriatel Cash'}
-        bot.send_message(call.message.chat.id, "ادخل المبلغ الزي ارسلته ⏬")
+        bot.send_message(call.message.chat.id, "ادخل المبلغ الذي ارسلته ⏬")
 
     elif data == 'pay_mtn':
         bot.answer_callback_query(call.id)
         mtn_msg = (
-            f"تحويل MTN Cash ليرة سورية 💵\n"
+            f"تحويل MTN Cash ليرة سورية 🇸🇾\n"
             f"كل 1$ = {exchange_rate:,} ل.س\n\n"
             f"كود تحويل ⏬\n"
             f" 8338 3112 0672 4992 \n"
@@ -409,7 +450,7 @@ def handle_callbacks(call):
         )
         bot.send_message(call.message.chat.id, mtn_msg)
         pending_topup[user_id] = {'state': 'waiting_amount', 'curr_type': 'SYP', 'method_key': 'mtn', 'method_name': 'MTN Cash'}
-        bot.send_message(call.message.chat.id, "ادخل المبلغ الزي ارسلته ⏬")
+        bot.send_message(call.message.chat.id, "ادخل المبلغ الذي ارسلته ⏬")
 
     elif data.startswith('approve_topup_'):
         if user_id != ADMIN_ID:
@@ -423,18 +464,16 @@ def handle_callbacks(call):
         method_key = parts[5] if len(parts) > 5 else ''
         
         try:
-            import re
             numbers = re.findall(r'\d+\.?\d*', amount_str)
             raw_amount = float(numbers[0]) if numbers else 0.0
         except Exception:
             raw_amount = 0.0
 
-        # تطبيق الخصومات الخاصة بحسب طريقة الدفع
         final_amount_to_process = raw_amount
         if method_key == 'syriatel':
-            final_amount_to_process = raw_amount * 0.95  # خصم 5%
+            final_amount_to_process = raw_amount * 0.95
         elif method_key == 'mtn':
-            final_amount_to_process = raw_amount * 0.92  # خصم 8%
+            final_amount_to_process = raw_amount * 0.92
 
         if curr_type == 'SYP':
             added_usd = final_amount_to_process / exchange_rate
@@ -458,7 +497,7 @@ def handle_callbacks(call):
         
         try:
             client_msg = (
-                f"تم اضافة المبلغ:{final_amount_to_process:g} {'$' if curr_type=='USD' else 'ل.س'}\n"
+                f"تم اضافة المبلغ: {final_amount_to_process:g} {'$' if curr_type=='USD' else 'ل.س'}\n"
                 f"رصيدك الان {disp_bal}\n"
                 f"استمتع بطلب من خدماتنا"
             )
@@ -482,15 +521,42 @@ def handle_callbacks(call):
         except Exception:
             pass
 
-    elif data.startswith('service_'):
-        service_names = {
-            'service_games': 'شحن ألعاب 🕹',
-            'service_apps': 'شحن تطبيقات 📱',
-            'service_support': 'دعم حسابات 🤳',
-            'service_accounts': 'بيع حسابات 📲'
+    elif data.startswith('buy_'):
+        product_id = int(data.split('_')[1])
+        products = get_mhd_products()
+
+        selected_product = None
+        if products:
+            for p in products:
+                if p['id'] == product_id:
+                    selected_product = p
+                    break
+
+        if not selected_product:
+            bot.answer_callback_query(call.id, "المنتج غير موجود أو غير متوفر.")
+            return
+
+        user_balance = users_db.get(user_id, {}).get('balance', 0.0)
+        product_price_usd = selected_product['price']
+
+        if user_balance < product_price_usd:
+            bot.answer_callback_query(call.id, "رصيدك غير كافٍ لإتمام هذه العملية!", show_alert=True)
+            return
+
+        user_temp_order[user_id] = {
+            "product_id": selected_product['id'],
+            "product_name": selected_product['name'],
+            "price": product_price_usd
         }
-        bot.answer_callback_query(call.id, f"تم اختيار: {service_names.get(data)}")
-        bot.send_message(call.message.chat.id, f"لقد اخترت قسم ({service_names.get(data)}). يمكنك إتمام الطلب عبر التواصل مع الإدارة.")
+
+        bot.answer_callback_query(call.id)
+        bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text=f"لقد اخترت: *{selected_product['name']}*\nالسعر: ${product_price_usd}\n\nالرجاء إرسال **آيدي اللاعب (Player ID)** أو المعلومات المطلوبة للشحن الآن في رسالة:",
+            parse_mode="Markdown"
+        )
+        bot.register_next_step_handler(call.message, process_player_id)
 
     elif data == 'top_up_balance':
         show_topup_methods(call.message)
@@ -542,6 +608,58 @@ def handle_callbacks(call):
         }
         bot.answer_callback_query(call.id)
         bot.send_message(call.message.chat.id, f"🛠 [لوحة التحكم]:\n{actions_map.get(data, 'جاري التنفيذ...')}")
+
+def process_player_id(message):
+    user_id = message.from_user.id
+    player_id = message.text.strip()
+
+    if user_id not in user_temp_order:
+        bot.send_message(message.chat.id, "انتهت الجلسة أو حدث خطأ. الرجاء البدء من جديد.")
+        return
+
+    order_info = user_temp_order[user_id]
+    product_id = order_info['product_id']
+    price = order_info['price']
+    product_name = order_info['product_name']
+
+    users_db[user_id]['balance'] -= price
+    users_db[user_id]['spent'] += price
+    users_db[user_id]['orders'] += 1
+
+    wait_msg = bot.send_message(message.chat.id, "⏳ جاري إرسال طلبك إلى موقع الخدمات الرقمية ومعالجته...")
+
+    response = create_mhd_order(product_id=product_id, quantity=1, player_id=player_id)
+
+    try:
+        bot.delete_message(message.chat.id, wait_msg.message_id)
+    except Exception:
+        pass
+
+    if response and response.get("status") == "OK":
+        data = response.get("data", {})
+        order_status = data.get("status", "wait")
+        replay_api = data.get("replay_api")
+
+        success_text = (
+            f"✅ **تم إرسال الطلب بنجاح!**\n\n"
+            f"📦 المنتج: {product_name}\n"
+            f"🆔 الآيدي: {player_id}\n"
+            f"🔖 حالة الطلب بالموقع: `{order_status}`\n"
+        )
+
+        if replay_api:
+            success_text += f"\n🔑 **معلومات التسليم:**\n`{replay_api}`"
+
+        bot.send_message(message.chat.id, success_text, parse_mode="Markdown")
+    else:
+        users_db[user_id]['balance'] += price
+        users_db[user_id]['spent'] -= price
+        users_db[user_id]['orders'] -= 1
+        
+        err_msg = response.get("message", "خطأ غير معروف") if response else "فشل الاتصال بالموقع"
+        bot.send_message(message.chat.id, f"❌ **فشل تنفيذ الطلب من الموقع:**\n{err_msg}\n\n💰 تم إرجاع المبلغ إلى رصيدك.", parse_mode="Markdown")
+
+    del user_temp_order[user_id]
 
 app = Flask('')
 
