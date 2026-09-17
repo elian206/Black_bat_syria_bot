@@ -22,7 +22,7 @@ API_TOKEN = "Fluf9aJYBrtQ1a9ywuqrcMh2M4A8UIa8MKsgbyUk0PkYi301WuCqtLtGn4GO"
 api_headers = {"api-token": API_TOKEN}
 
 users_db = {}
-total_orders_global = 0  # تم تعيين العداد الكلي ليبدأ من الصفر تماماً
+total_orders_global = 0  # العداد الكلي يبدأ من الصفر
 exchange_rate = 15000  # سعر الصرف الافتراضي
 
 store_categories = {
@@ -101,7 +101,13 @@ def create_mhd_order(product_id, quantity, player_id):
             "order_uuid": unique_order_uuid,
         }
         response = requests.get(url, headers=api_headers, params=params)
-        res_json = response.json()
+        
+        # معالجة استجابة الموقع وتجنب خطأ الـ JSON الفارغ أو غير الصالح
+        try:
+            res_json = response.json()
+        except ValueError:
+            return {"status": "ERROR", "message": "الموقع الخارجي لا يستجيب أو أرسل رداً غير صالح (مشكلة في سيرفر الموقع)."}
+            
         res_json['order_uuid'] = unique_order_uuid
         return res_json
     except Exception as e:
@@ -116,7 +122,12 @@ def create_mhd_code_order(product_id, quantity=1):
             "order_uuid": unique_order_uuid,
         }
         response = requests.get(url, headers=api_headers, params=params)
-        res_json = response.json()
+        
+        try:
+            res_json = response.json()
+        except ValueError:
+            return {"status": "ERROR", "message": "الموقع الخارجي لا يستجيب أو أرسل رداً غير صالح (مشكلة في سيرفر الموقع)."}
+            
         res_json['order_uuid'] = unique_order_uuid
         return res_json
     except Exception as e:
@@ -127,7 +138,10 @@ def check_mhd_order_status(order_uuid):
         url = f"{API_BASE}/client/api/orderStatus"
         params = {"order_uuid": order_uuid}
         response = requests.get(url, headers=api_headers, params=params)
-        return response.json()
+        try:
+            return response.json()
+        except ValueError:
+            return {"status": "ERROR", "message": "استجابة غير صالحة من سيرفر الموقع"}
     except Exception as e:
         return {"status": "ERROR", "message": str(e)}
 
@@ -148,7 +162,6 @@ def send_welcome(message):
     if not bot_is_active and user_id != ADMIN_ID:
         return
 
-    # الرصيد يبدأ من الصفر للعميل الجديد
     if user_id not in users_db:
         users_db[user_id] = {
             'name': message.from_user.first_name,
@@ -723,7 +736,6 @@ def handle_callbacks(call):
                     "is_code": True
                 })
                 
-                # زيادة العداد الكلي بنجاح
                 total_orders_global += 1
                 
                 bot.send_message(
@@ -831,7 +843,6 @@ def handle_callbacks(call):
                     "is_code": False
                 })
                 
-                # زيادة العداد الكلي بنجاح
                 total_orders_global += 1
                 
                 bot.send_message(call.message.chat.id, "✅ تم تنفيذ طلبك بنجاح، شكرا للتعامل معنا 🤝")
