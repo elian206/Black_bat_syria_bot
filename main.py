@@ -27,7 +27,11 @@ exchange_rate = 15000
 
 # الأقسام الافتراضية والمنتجات المضافة من قبل الأدمن
 store_categories = {
-    "🎮 شحن العاب": [],
+    "🎮 شحن العاب": [
+        {"id": 1, "name": "Free Fire (فري فاير)", "price": 1.0, "available": True},
+        {"id": 2, "name": "PUBG Mobile (ببجي موبايل)", "price": 1.5, "available": True},
+        {"id": 3, "name": "Jawaker (جواكر)", "price": 2.0, "available": True}
+    ],
     "📱 شحن تطبيقات": [],
     "🛡 دعم حسابات": []
 }
@@ -248,7 +252,6 @@ def handle_text_messages(message):
                 return
 
         elif admin_st == 'waiting_product_details':
-            # تنسيق الإدخال: ID_المنتج | الاسم | السعر
             text = message.text.strip()
             parts = [p.strip() for p in text.split('|')]
             if len(parts) == 3:
@@ -333,9 +336,6 @@ def handle_text_messages(message):
         markup_cats = types.InlineKeyboardMarkup()
         for cat_name in store_categories.keys():
             markup_cats.add(types.InlineKeyboardButton(cat_name, callback_data=f"cat_{cat_name}"))
-        
-        # خيار إضافي لجلب المنتجات من موقع MHD Store مباشرة إن أردت
-        markup_cats.add(types.InlineKeyboardButton("🌐 منتجات موقع MHD API", callback_data="cat_api_products"))
 
         bot.reply_to(message, "اختر القسم المطلوب لتصفح الخدمات والمنتجات ⏬", reply_markup=markup_cats)
 
@@ -390,6 +390,7 @@ def show_admin_panel(message):
     
     markup_admin = types.InlineKeyboardMarkup()
     markup_admin.add(types.InlineKeyboardButton(toggle_btn_text, callback_data='adm_toggle_bot'))
+    markup_admin.add(types.InlineKeyboardButton('🌐 منتجات موقع MHD API', callback_data='cat_api_products'))
     markup_admin.add(types.InlineKeyboardButton('➕ اضافة منتج داخل قسم', callback_data='adm_add_product'))
     markup_admin.add(types.InlineKeyboardButton('➕ اضافة رصيد يدوي', callback_data='adm_add_balance'))
     markup_admin.add(types.InlineKeyboardButton('➖ خصم رصيد يدوي', callback_data='adm_sub_balance'))
@@ -406,21 +407,25 @@ def handle_callbacks(call):
     if not bot_is_active and user_id != ADMIN_ID:
         return
 
+    if data == 'cat_api_products':
+        if user_id != ADMIN_ID:
+            bot.answer_callback_query(call.id, "هذا الزر مخصص للأدمن فقط!", show_alert=True)
+            return
+        products = get_mhd_products()
+        if not products:
+            bot.answer_callback_query(call.id, "عذراً، لا توجد منتجات متاحة حالياً عبر الـ API.", show_alert=True)
+            return
+        markup_prods = types.InlineKeyboardMarkup()
+        for p in products[:15]:
+            markup_prods.add(types.InlineKeyboardButton(f"{p['name']} - ${p['price']}", callback_data=f"buy_{p['id']}"))
+        bot.answer_callback_query(call.id)
+        bot.send_message(call.message.chat.id, "🌐 منتجات موقع MHD API المتاحة:", reply_markup=markup_prods)
+        return
+
     if data.startswith('cat_'):
         cat_key = data.replace('cat_', '')
         bot.answer_callback_query(call.id)
         
-        if cat_key == 'api_products':
-            products = get_mhd_products()
-            if not products:
-                bot.send_message(call.message.chat.id, "عذراً، لا توجد منتجات متاحة حالياً عبر الـ API.")
-                return
-            markup_prods = types.InlineKeyboardMarkup()
-            for p in products[:15]:
-                markup_prods.add(types.InlineKeyboardButton(f"{p['name']} - ${p['price']}", callback_data=f"buy_{p['id']}"))
-            bot.send_message(call.message.chat.id, "🌐 منتجات موقع MHD API المتاحة:", reply_markup=markup_prods)
-            return
-
         if cat_key in store_categories:
             prods = store_categories[cat_key]
             if not prods:
@@ -551,7 +556,6 @@ def handle_callbacks(call):
     elif data.startswith('buy_'):
         product_id = int(data.split('_')[1])
         
-        # البحث في المنتجات المضافة محلياً أو عبر API
         selected_product = None
         for cat_list in store_categories.values():
             for p in cat_list:
