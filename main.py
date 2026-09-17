@@ -17,7 +17,7 @@ except Exception:
 ADMIN_ID = 8534087775
 CHANNEL_USERNAME = '@black1_bat_syria'
 
-API_BASE = "https://mhd-game.com/api/client/api"
+API_BASE = "https://mhd-game.com/api"
 API_TOKEN = "Fluf9aJYBrtQ1a9ywuqrcMh2M4A8UIa8MKsgbyUk0PkYi301WuCqtLtGn4GO"
 api_headers = {"api-token": API_TOKEN}
 
@@ -94,7 +94,7 @@ def format_price(user_id, price_in_usd):
 def create_mhd_order(product_id, quantity, player_id):
     try:
         unique_order_uuid = str(uuid.uuid4())
-        url = f"{API_BASE}/newOrder/{product_id}"
+        url = f"{API_BASE}/client/api/newOrder/{product_id}"
         
         payload = {
             "qty": quantity,
@@ -117,7 +117,7 @@ def create_mhd_order(product_id, quantity, player_id):
 def create_mhd_code_order(product_id, quantity=1):
     try:
         unique_order_uuid = str(uuid.uuid4())
-        url = f"{API_BASE}/newOrder/{product_id}"
+        url = f"{API_BASE}/client/api/newOrder/{product_id}"
         
         payload = {
             "qty": quantity,
@@ -138,7 +138,7 @@ def create_mhd_code_order(product_id, quantity=1):
 
 def check_mhd_order_status(order_uuid):
     try:
-        url = f"{API_BASE}/orderStatus"
+        url = f"{API_BASE}/client/api/orderStatus"
         params = {"order_uuid": order_uuid}
         response = requests.get(url, headers=api_headers, params=params)
         try:
