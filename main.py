@@ -240,6 +240,7 @@ def handle_text_messages(message):
             u_name = users_db.get(user_id, {}).get('name', message.from_user.first_name)
             amount = pending_topup[user_id]['amount']
             curr_type = pending_topup[user_id]['curr_type']
+            method_key = pending_topup[user_id]['method_key']
             method_name = pending_topup[user_id]['method_name']
             
             bot.reply_to(message, "تم استلام طلب تعبئة رصيدك ستوافق عليها الإدارة ✅")
@@ -254,7 +255,7 @@ def handle_text_messages(message):
             
             markup_admin_approval = types.InlineKeyboardMarkup()
             markup_admin_approval.add(
-                types.InlineKeyboardButton('✅ موافق', callback_data=f'approve_topup_{user_id}_{amount}_{curr_type}'),
+                types.InlineKeyboardButton('✅ موافق', callback_data=f'approve_topup_{user_id}_{amount}_{curr_type}_{method_key}'),
                 types.InlineKeyboardButton('❌ غير موافق', callback_data=f'reject_topup_{user_id}')
             )
             
@@ -370,7 +371,7 @@ def handle_callbacks(call):
             f"اسم الحساب: جورج عيسى بركات."
         )
         bot.send_message(call.message.chat.id, sham_msg)
-        pending_topup[user_id] = {'state': 'waiting_amount', 'curr_type': 'USD', 'method_name': 'Sham Cash (USD)'}
+        pending_topup[user_id] = {'state': 'waiting_amount', 'curr_type': 'USD', 'method_key': 'sham_usd', 'method_name': 'Sham Cash (USD)'}
         bot.send_message(call.message.chat.id, "ادخل مبلغ الدولار الذي أرسلته (مثال: 5) ⏬")
 
     elif data == 'pay_sham_syp':
@@ -382,7 +383,7 @@ def handle_callbacks(call):
             f"اسم الحساب: جورج عيسى بركات."
         )
         bot.send_message(call.message.chat.id, sham_msg)
-        pending_topup[user_id] = {'state': 'waiting_amount', 'curr_type': 'SYP', 'method_name': 'Sham Cash (SYP)'}
+        pending_topup[user_id] = {'state': 'waiting_amount', 'curr_type': 'SYP', 'method_key': 'sham_syp', 'method_name': 'Sham Cash (SYP)'}
         bot.send_message(call.message.chat.id, "ادخل المبلغ الزي ارسلته ⏬")
 
     elif data == 'pay_syriatel':
@@ -394,7 +395,7 @@ def handle_callbacks(call):
             f"⚠️ التحويل حصرا من خيار (تحويل يدوي) اذا قمت بتحويل رصيد عادي لن يتم الموافقة ع طلب التعبئة."
         )
         bot.send_message(call.message.chat.id, syriatel_msg)
-        pending_topup[user_id] = {'state': 'waiting_amount', 'curr_type': 'SYP', 'method_name': 'Syriatel Cash'}
+        pending_topup[user_id] = {'state': 'waiting_amount', 'curr_type': 'SYP', 'method_key': 'syriatel', 'method_name': 'Syriatel Cash'}
         bot.send_message(call.message.chat.id, "ادخل المبلغ الزي ارسلته ⏬")
 
     elif data == 'pay_mtn':
@@ -407,7 +408,7 @@ def handle_callbacks(call):
             f"⚠️ التحويل حصرا من خيار (عن طريق رقم المحفظة) اذا قمت بتحويل رصيد عادي لن يتم الموافقة ع طلب التعبئة."
         )
         bot.send_message(call.message.chat.id, mtn_msg)
-        pending_topup[user_id] = {'state': 'waiting_amount', 'curr_type': 'SYP', 'method_name': 'MTN Cash'}
+        pending_topup[user_id] = {'state': 'waiting_amount', 'curr_type': 'SYP', 'method_key': 'mtn', 'method_name': 'MTN Cash'}
         bot.send_message(call.message.chat.id, "ادخل المبلغ الزي ارسلته ⏬")
 
     elif data.startswith('approve_topup_'):
@@ -419,6 +420,7 @@ def handle_callbacks(call):
         target_user_id = int(parts[2])
         amount_str = parts[3]
         curr_type = parts[4] if len(parts) > 4 else 'USD'
+        method_key = parts[5] if len(parts) > 5 else ''
         
         try:
             import re
@@ -427,10 +429,17 @@ def handle_callbacks(call):
         except Exception:
             raw_amount = 0.0
 
+        # تطبيق الخصومات الخاصة بحسب طريقة الدفع
+        final_amount_to_process = raw_amount
+        if method_key == 'syriatel':
+            final_amount_to_process = raw_amount * 0.95  # خصم 5%
+        elif method_key == 'mtn':
+            final_amount_to_process = raw_amount * 0.92  # خصم 8%
+
         if curr_type == 'SYP':
-            added_usd = raw_amount / exchange_rate
+            added_usd = final_amount_to_process / exchange_rate
         else:
-            added_usd = raw_amount
+            added_usd = final_amount_to_process
 
         if target_user_id not in users_db:
             users_db[target_user_id] = {'name': 'مستخدم', 'balance': 0.0, 'spent': 0.0, 'orders': 0, 'banned': False, 'currency': 'USD'}
@@ -449,7 +458,7 @@ def handle_callbacks(call):
         
         try:
             client_msg = (
-                f"تم اضافة المبلغ:{amount_str} {'$' if curr_type=='USD' else 'ل.س'}\n"
+                f"تم اضافة المبلغ:{final_amount_to_process:g} {'$' if curr_type=='USD' else 'ل.س'}\n"
                 f"رصيدك الان {disp_bal}\n"
                 f"استمتع بطلب من خدماتنا"
             )
