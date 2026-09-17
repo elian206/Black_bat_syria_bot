@@ -15,6 +15,7 @@ except Exception:
     pass
 
 ADMIN_ID = 8534087775
+ADMIN_USERNAME = "black1_bat_syria" # ضع معرف حساب الأدمن هنا بدون @ أو اترك المعرف الخاص بك
 CHANNEL_USERNAME = '@black1_bat_syria'
 
 API_BASE = "https://mhd-game.com/api"
@@ -103,7 +104,6 @@ def create_mhd_order(product_id, quantity, player_id):
         }
         
         response = requests.get(url, headers=api_headers, params=params)
-        
         try:
             res_json = response.json()
         except ValueError:
@@ -125,7 +125,6 @@ def create_mhd_code_order(product_id, quantity=1):
         }
         
         response = requests.get(url, headers=api_headers, params=params)
-        
         try:
             res_json = response.json()
         except ValueError:
@@ -142,7 +141,8 @@ def check_mhd_order_status(order_uuid):
         params = {"order_uuid": order_uuid}
         response = requests.get(url, headers=api_headers, params=params)
         try:
-            return response.json()
+            res_data = response.json()
+            return res_data
         except ValueError:
             return {"status": "ERROR", "message": "استجابة غير صالحة من سيرفر الموقع"}
     except Exception as e:
@@ -202,26 +202,30 @@ def show_main_menu(chat_id, user_name, user_id):
     btn1 = types.KeyboardButton('🛍 خدمات متجرنا')
     btn2 = types.KeyboardButton('👤 حسابك')
     btn3 = types.KeyboardButton('💳 تعبئة رصيد')
+    btn_support = types.KeyboardButton('📞 الدعم') # زر الدعم المضاف حديثاً
     btn_curr = types.KeyboardButton(curr_btn_text)
-    btn4 = types.KeyboardButton(f'📊 الطلبات المنفذة: {total_orders_global}')
     
     if chat_id == ADMIN_ID:
         btn_admin = types.KeyboardButton('⚙️ لوحة تحكم الأدمن')
         markup.add(btn1)
         markup.add(btn2, btn3)
-        markup.add(btn_curr, btn4)
+        markup.add(btn_support, btn_curr)
         markup.add(btn_admin)
     else:
         markup.add(btn1)
         markup.add(btn2, btn3)
-        markup.add(btn_curr, btn4)
+        markup.add(btn_support, btn_curr)
     
+    markup_inline = types.InlineKeyboardMarkup()
+    markup_inline.add(types.InlineKeyboardButton(f'📊 الطلبات المنفذة: {total_orders_global}', callback_data='show_global_orders_count'))
+
     welcome_msg = (
         f"أهلاً بك {user_name} بمتجر BLACK BAT 📱\n"
         f"نشكرك على التعامل معنا 🤝\n"
         f"قم باختيار ماذا تريد من خدماتنا ⏬"
     )
     bot.send_message(chat_id, welcome_msg, reply_markup=markup)
+    bot.send_message(chat_id, "📊 لمعرفة وإحصاءات الطلبات المنفذة بالمتجر اضغط الزر أدناه:", reply_markup=markup_inline)
 
 @bot.callback_query_handler(func=lambda call: call.data == 'check_sub')
 def verify_sub(call):
@@ -329,7 +333,7 @@ def handle_text_messages(message):
         if state == 'waiting_amount':
             pending_topup[user_id]['amount'] = message.text.strip()
             pending_topup[user_id]['state'] = 'waiting_operation_id'
-            bot.reply_to(message, "ارسل رقم عملية التحويل ⏬")
+            bot.reply_to(message, "ارسل رقم عملية التحويل ەس")
             return
         elif state == 'waiting_operation_id':
             op_id = message.text.strip()
@@ -367,6 +371,12 @@ def handle_text_messages(message):
             users_db[user_id]['currency'] = 'USD'
             bot.reply_to(message, "تم تغيير العملة إلى (الدولار الأمريكي 💵).")
         show_main_menu(message.chat.id, message.from_user.first_name, user_id)
+        return
+
+    if message.text == '📞 الدعم':
+        markup_support = types.InlineKeyboardMarkup()
+        markup_support.add(types.InlineKeyboardButton('💬 تواصل مع الأدمن مباشرة', url=f'https://t.me/{ADMIN_USERNAME}'))
+        bot.reply_to(message, "📞 للتواصل مع الدعم الفني أو الاستفسار عن أي مشكلة، يمكنك الضغط على الزر أدناه للانتقال للملف الشخصي للأدمن مباشرة 👇", reply_markup=markup_support)
         return
 
     if message.text == '🛍 خدمات متجرنا':
@@ -410,9 +420,6 @@ def handle_text_messages(message):
     elif message.text == '⚙️ لوحة تحكم الأدمن' and user_id == ADMIN_ID:
         show_admin_panel(message)
 
-    elif message.text.startswith('📊 الطلبات المنفذة:'):
-        bot.reply_to(message, f"📊 إجمالي عدد الطلبات المنفذة لجميع العملاء في المتجر حالياً هو: `{total_orders_global}` طلب.", parse_mode='Markdown')
-
 def show_topup_methods(message):
     markup_topup = types.InlineKeyboardMarkup()
     markup_topup.add(types.InlineKeyboardButton('🟩 Sham Cash (تحويل دولار 💵)', callback_data='pay_sham_usd'))
@@ -438,6 +445,7 @@ def show_admin_panel(message):
     )
     markup_admin.add(types.InlineKeyboardButton('📢 إرسال رسالة للجميع', callback_data='adm_broadcast'))
     markup_admin.add(types.InlineKeyboardButton('👥 سجل العملاء', callback_data='adm_users_log'))
+    markup_admin.add(types.InlineKeyboardButton('💻 كود البوت', callback_data='adm_get_source_code'))
     
     if isinstance(message, types.Message):
         bot.send_message(message.chat.id, admin_text, parse_mode='Markdown', reply_markup=markup_admin)
@@ -453,7 +461,28 @@ def handle_callbacks(call):
     if not bot_is_active and user_id != ADMIN_ID:
         return
 
-    if data == 'adm_exchange_rate':
+    if data == 'show_global_orders_count':
+        bot.answer_callback_query(call.id, f"إجمالي الطلبات المنفذة في المتجر حالياً: {total_orders_global} طلب")
+        try:
+            markup_inline = types.InlineKeyboardMarkup()
+            markup_inline.add(types.InlineKeyboardButton(f'📊 الطلبات المنفذة: {total_orders_global}', callback_data='show_global_orders_count'))
+            bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=markup_inline)
+        except Exception:
+            pass
+        return
+
+    elif data == 'adm_get_source_code':
+        if user_id != ADMIN_ID:
+            return
+        bot.answer_callback_query(call.id, "جاري إرسال كود البوت...")
+        try:
+            with open(__file__, 'rb') as f:
+                bot.send_document(call.message.chat.id, f, caption="💻 تفضل ملف كود البوت الحالي. يمكنك التعديل عليه وإرساله لي لاحقاً في أي وقت مع طلباتك الجديدة.")
+        except Exception as e:
+            bot.send_message(call.message.chat.id, f"❌ حدث خطأ أثناء إرسال الكود: {e}")
+        return
+
+    elif data == 'adm_exchange_rate':
         if user_id != ADMIN_ID:
             return
         admin_states['state'] = 'waiting_new_rate'
@@ -548,8 +577,12 @@ def handle_callbacks(call):
             uuid_str = ord_info.get('uuid')
             if uuid_str and not ord_info.get('is_code'):
                 res = check_mhd_order_status(uuid_str)
-                if res and res.get("status") == "OK":
-                    ord_info['status'] = res.get("message", "اكتمل التنفيذ")
+                if res and isinstance(res, dict):
+                    status_val = res.get("status") or res.get("state") or res.get("message")
+                    if status_val:
+                        ord_info['status'] = str(status_val)
+                    else:
+                        ord_info['status'] = "مكتمل / قيد التنفيذ"
                 else:
                     ord_info['status'] = "قيد التنفيذ"
             
