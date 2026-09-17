@@ -41,8 +41,17 @@ def get_mhd_products():
     try:
         url = f"{API_BASE}/client/api/products"
         response = requests.get(url, headers=api_headers)
+        
+        # طباعة معلومات التشخيص في الـ Terminal لمعرفة سبب مشكلة الـ API بدقة
+        print(f"--- [DEBUG] HTTP Status Code: {response.status_code}")
+        print(f"--- [DEBUG] Response Content: {response.text}")
+        
         if response.status_code == 200:
-            return response.json()
+            data = response.json()
+            if isinstance(data, list):
+                return data
+            elif isinstance(data, dict):
+                return data.get('data', data.get('products', []))
     except Exception as e:
         print(f"Error fetching products: {e}")
     return None
@@ -282,7 +291,6 @@ def handle_text_messages(message):
                 except Exception:
                     pass
             
-            # زر الإلغاء ليظهر مجدداً مع رسالة الخطأ لتسهيل التراجع
             markup_cancel = types.InlineKeyboardMarkup()
             markup_cancel.add(types.InlineKeyboardButton('❌ إلغاء العملية', callback_data='cancel_admin_action'))
             
@@ -419,7 +427,6 @@ def handle_callbacks(call):
     if not bot_is_active and user_id != ADMIN_ID:
         return
 
-    # زر إلغاء العملية للأدمن
     if data == 'cancel_admin_action':
         if user_id != ADMIN_ID:
             return
@@ -679,7 +686,6 @@ def handle_callbacks(call):
         admin_states['state'] = 'waiting_product_details'
         bot.answer_callback_query(call.id)
         
-        # إضافة زر الإلغاء هنا تحت رسالة طلب إدخال البيانات المطلوبة
         markup_cancel = types.InlineKeyboardMarkup()
         markup_cancel.add(types.InlineKeyboardButton('❌ إلغاء العملية', callback_data='cancel_admin_action'))
 
