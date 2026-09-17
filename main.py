@@ -22,8 +22,8 @@ API_TOKEN = "Fluf9aJYBrtQ1a9ywuqrcMh2M4A8UIa8MKsgbyUk0PkYi301WuCqtLtGn4GO"
 api_headers = {"api-token": API_TOKEN}
 
 users_db = {}
-total_orders_global = 0  # العداد الكلي يبدأ من الصفر
-exchange_rate = 15000  # سعر الصرف الافتراضي
+total_orders_global = 0  
+exchange_rate = 15000  
 
 store_categories = {
     "🎮 شحن ألعاب": {
@@ -95,18 +95,20 @@ def create_mhd_order(product_id, quantity, player_id):
     try:
         unique_order_uuid = str(uuid.uuid4())
         url = f"{API_BASE}/client/api/newOrder/{product_id}"
-        params = {
+        
+        # إرسال البيانات عبر POST و JSON حسب متطلبات الموقع
+        payload = {
             "qty": quantity,
             "playerId": player_id,
             "order_uuid": unique_order_uuid,
         }
-        response = requests.get(url, headers=api_headers, params=params)
         
-        # معالجة استجابة الموقع وتجنب خطأ الـ JSON الفارغ أو غير الصالح
+        response = requests.post(url, headers=api_headers, json=payload)
+        
         try:
             res_json = response.json()
         except ValueError:
-            return {"status": "ERROR", "message": "الموقع الخارجي لا يستجيب أو أرسل رداً غير صالح (مشكلة في سيرفر الموقع)."}
+            return {"status": "ERROR", "message": f"الموقع أرسل رداً غير صالح. الكود: {response.status_code}"}
             
         res_json['order_uuid'] = unique_order_uuid
         return res_json
@@ -117,16 +119,18 @@ def create_mhd_code_order(product_id, quantity=1):
     try:
         unique_order_uuid = str(uuid.uuid4())
         url = f"{API_BASE}/client/api/newOrder/{product_id}"
-        params = {
+        
+        payload = {
             "qty": quantity,
             "order_uuid": unique_order_uuid,
         }
-        response = requests.get(url, headers=api_headers, params=params)
+        
+        response = requests.post(url, headers=api_headers, json=payload)
         
         try:
             res_json = response.json()
         except ValueError:
-            return {"status": "ERROR", "message": "الموقع الخارجي لا يستجيب أو أرسل رداً غير صالح (مشكلة في سيرفر الموقع)."}
+            return {"status": "ERROR", "message": f"الموقع أرسل رداً غير صالح. الكود: {response.status_code}"}
             
         res_json['order_uuid'] = unique_order_uuid
         return res_json
