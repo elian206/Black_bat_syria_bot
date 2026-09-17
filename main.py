@@ -18,7 +18,8 @@ ADMIN_ID = 8534087775
 CHANNEL_USERNAME = '@black1_bat_syria'
 
 API_BASE = "https://mhd-game.com/api"
-API_TOKEN = "fluf9aJYBrtQ1a9yuuqrcMh2M4A8Ui8MKsgbyUk0PkYi301WuCqtLtGn4GO"
+# تم وضع التوكن الصحيح هنا مباشرة
+API_TOKEN = "Fluf9aJYBrtQ1a9ywuqrcMh2M4A8UIa8MKsgbyUk0PkYi301WuCqtLtGn4GO"
 api_headers = {"api-token": API_TOKEN}
 
 users_db = {}
@@ -41,9 +42,15 @@ def get_mhd_products():
     try:
         url = f"{API_BASE}/client/api/products"
         response = requests.get(url, headers=api_headers)
-        return response.status_code, response.text
+        if response.status_code == 200:
+            data = response.json()
+            if isinstance(data, list):
+                return data
+            elif isinstance(data, dict):
+                return data.get('data', data.get('products', []))
     except Exception as e:
-        return 500, str(e)
+        print(f"Error fetching products: {e}")
+    return None
 
 def create_mhd_order(product_id, quantity, player_id):
     try:
@@ -433,10 +440,17 @@ def handle_callbacks(call):
             bot.answer_callback_query(call.id, "هذا الزر مخصص للأدمن فقط!", show_alert=True)
             return
         
-        # فحص استجابة الـ API وإرسالها مباشرة لرؤية السبب في التليجرام
-        status_code, response_text = get_mhd_products()
+        products = get_mhd_products()
+        if not products:
+            bot.answer_callback_query(call.id, "عذراً، لا توجد منتجات متاحة حالياً عبر الـ API.", show_alert=True)
+            return
+        
+        markup_prods = types.InlineKeyboardMarkup()
+        for p in products[:25]:
+            markup_prods.add(types.InlineKeyboardButton(f"{p['name']} - ${p['price']} (ID: {p['id']})", callback_data=f"buy_{p['id']}"))
+        
         bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, f"🔍 نتيجة فحص الـ API:\n\nStatus: {status_code}\n\nResponse:\n{response_text[:3500]}")
+        bot.send_message(call.message.chat.id, "🌐 جميع خدمات ومنتجات موقع MHD API المتاحة (مع المعرفات والأسعار):", reply_markup=markup_prods)
         return
 
     if data.startswith('cat_'):
@@ -583,19 +597,12 @@ def handle_callbacks(call):
                 break
         
         if not selected_product:
-            _, resp_text = get_mhd_products()
-            try:
-                import json
-                api_prods = json.loads(resp_text)
-                if isinstance(api_prods, dict):
-                    api_prods = api_prods.get('data', api_prods.get('products', []))
-                if isinstance(api_prods, list):
-                    for p in api_prods:
-                        if p.get('id') == product_id:
-                            selected_product = p
-                            break
-            except Exception:
-                pass
+            api_prods = get_mhd_products()
+            if api_prods:
+                for p in api_prods:
+                    if p['id'] == product_id:
+                        selected_product = p
+                        break
 
         if not selected_product:
             bot.answer_callback_query(call.id, "المنتج غير موجود أو غير متوفر.")
