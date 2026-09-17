@@ -6,12 +6,20 @@ from threading import Thread
 TOKEN = '8909052904:AAHEsWa85CbV5Kwxs4Y1kG7h7TMtHpx-TMw'
 bot = telebot.TeleBot(TOKEN)
 
+try:
+    bot.remove_webhook()
+except Exception:
+    pass
+
 ADMIN_ID = 8534087775
 CHANNEL_USERNAME = '@black1_bat_syria'
 
 users_db = {}
 total_orders_global = 142
-exchange_rate = 15000  # سعر الصرف الافتراضي (يمكن للأدمن تعديله)
+exchange_rate = 15000
+
+# قاموس مؤقت لحفظ حالات تعبئة الرصيد للمستخدمين
+pending_topup = {}
 
 def check_subscription(user_id):
     try:
@@ -29,11 +37,11 @@ def send_welcome(message):
     if user_id not in users_db:
         users_db[user_id] = {
             'name': message.from_user.first_name,
-            'balance': 10.0,  # رصيد تجريبي بالدولار
+            'balance': 10.0,
             'spent': 2.0,
             'orders': 1,
             'banned': False,
-            'currency': 'USD'  # العملة الافتراضية
+            'currency': 'USD'
         }
     
     if users_db[user_id]['banned']:
@@ -86,7 +94,10 @@ def verify_sub(call):
     user_id = call.from_user.id
     if check_subscription(user_id) or user_id == ADMIN_ID:
         bot.answer_callback_query(call.id, "تم التحقق بنجاح! أهلاً بك.")
-        bot.delete_message(call.message.chat.id, call.message.message_id)
+        try:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+        except Exception:
+            pass
         show_main_menu(call.message.chat.id, call.from_user.first_name, user_id)
     else:
         bot.answer_callback_query(call.id, "لم تقم بالاشتراك بعد، يرجى الاشتراك ومحاولة مجدداً.", show_alert=True)
@@ -98,7 +109,49 @@ def handle_text_messages(message):
     if user_id in users_db and users_db[user_id]['banned']:
         return
 
-    # زر تبديل العملة
+    # معالجة إدخال المبلغ ورقم العملية لعملية التعبئة
+    if user_id in pending_topup:
+        state = pending_topup[user_id].get('state')
+        
+        if state == 'waiting_amount':
+            amount_text = message.text.strip()
+            pending_topup[user_id]['amount'] = amount_text
+            pending_topup[user_id]['state'] = 'waiting_operation_id'
+            bot.reply_to(message, "ارسل رقم عملية التحويل ⏬")
+            return
+            
+        elif state == 'waiting_operation_id':
+            op_id = message.text.strip()
+            pending_topup[user_id]['op_id'] = op_id
+            
+            u_name = users_db.get(user_id, {}).get('name', message.from_user.first_name)
+            amount = pending_topup[user_id]['amount']
+            
+            # إرسال رسالة للمستخدم
+            bot.reply_to(message, "تم استلام طلب تعبئة رصيدك ستوافق عليها الإدارة ✅")
+            
+            # إرسال إشعار للأدمن مع زري الموافقة والرفض
+            admin_msg = (
+                f"📌 طلب تعبئة رصيد جديد:\n\n"
+                f"📌 اسم المستخدم: {u_name}\n"
+                f"📌 ايدي الحساب: `{user_id}`\n"
+                f"📌 المبلغ: {amount}\n"
+                f"📌 رقم العملية: {op_id}"
+            )
+            
+            markup_admin_approval = types.InlineKeyboardMarkup()
+            # نخزن في الـ callback_data ايدي المستخدم والمبلغ لتسهيل إعطاء الرصيد
+            markup_admin_approval.add(
+                types.InlineKeyboardButton('✅ موافق', callback_data=f'approve_topup_{user_id}_{amount}'),
+                types.InlineKeyboardButton('❌ غير موافق', callback_data=f'reject_topup_{user_id}')
+            )
+            
+            bot.send_message(ADMIN_ID, admin_msg, parse_mode='Markdown', reply_markup=markup_admin_approval)
+            
+            # حذف الحالة المؤقتة
+            del pending_topup[user_id]
+            return
+
     if '💱 العملة:' in message.text:
         if user_id not in users_db:
             users_db[user_id] = {'name': message.from_user.first_name, 'balance': 0.0, 'spent': 0.0, 'orders': 0, 'banned': False, 'currency': 'USD'}
@@ -185,8 +238,81 @@ def show_admin_panel(message):
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
     data = call.data
+    user_id = call.from_user.id
     
-    if data.startswith('service_'):
+    if data == 'pay_sham':
+        bot.answer_callback_query(call.id)
+        sham_msg = (
+            f"تحويل Sham Cash ليرة سورية 💵\n"
+            f"كل 1$ = {exchange_rate:,} ل.س\n"
+            f"اقل مبلغ للتعبئة هو: 1دولار💲\n"
+            f"قم بالتحويل على هذا الحساب ⏬\n"
+            f"ebae7d2aa7d10e62f02b1199d87208f4\n"
+            f"اسم الحساب: جورج عيسى بركات."
+        )
+        bot.send_message(call.message.chat.id, sham_msg)
+        # تفعيل حالة انتظار المبلغ من العميل
+        pending_topup[user_id] = {'state': 'waiting_amount'}
+        bot.send_message(call.message.chat.id, "ادخل المبلغ الذي أرسلته ⏬")
+
+    elif data.startswith('approve_topup_'):
+        if user_id != ADMIN_ID:
+            bot.answer_callback_query(call.id, "هذا الزر للأدمن فقط!", show_alert=True)
+            return
+            
+        parts = data.split('_')
+        target_user_id = int(parts[2])
+        amount_str = parts[3]
+        
+        # محاولة استخراج رقم أو قيمة لإضافتها للرصيد
+        try:
+            # استخراج الأرقام من نص المبلغ لو وُجدت رموز مثل $ أو ل.س
+            import re
+            numbers = re.findall(r'\d+\.?\d*', amount_str)
+            added_amount = float(numbers[0]) if numbers else 0.0
+        except Exception:
+            added_amount = 0.0
+
+        # تحديث رصيد المستخدم
+        if target_user_id in users_db:
+            users_db[target_user_id]['balance'] += added_amount
+            total_bal = users_db[target_user_id]['balance']
+        else:
+            # افتراض بيانات أولية لو لم يكن مسجلاً بقاموس البيانات
+            users_db[target_user_id] = {'name': 'مستخدم', 'balance': added_amount, 'spent': 0.0, 'orders': 0, 'banned': False, 'currency': 'USD'}
+            total_bal = added_amount
+
+        bot.answer_callback_query(call.id, "تمت الموافقة وإضافة الرصيد بنجاح!")
+        bot.edit_message_text(f"{call.message.text}\n\n✅ **الحالة:** تم قبول الطلب من قبل الأدمن.", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode='Markdown')
+        
+        # إرسال رسالة للعميل
+        try:
+            client_msg = (
+                f"تم اضافة المبلغ: {amount_str}\n"
+                f"رصيدك الان: {total_bal} $\n"
+                f"استمتع بطلب من خدماتنا"
+            )
+            bot.send_message(target_user_id, client_msg)
+        except Exception:
+            pass
+
+    elif data.startswith('reject_topup_'):
+        if user_id != ADMIN_ID:
+            bot.answer_callback_query(call.id, "هذا الزر للأدمن فقط!", show_alert=True)
+            return
+            
+        parts = data.split('_')
+        target_user_id = int(parts[2])
+        
+        bot.answer_callback_query(call.id, "تم رفض الطلب.")
+        bot.edit_message_text(f"{call.message.text}\n\n❌ **الحالة:** تم رفض الطلب.", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode='Markdown')
+        
+        try:
+            bot.send_message(target_user_id, "عذراً، تم رفض طلب تعبئة الرصيد من قبل الإدارة. يرجى التأكد من معلومات التحويل.")
+        except Exception:
+            pass
+
+    elif data.startswith('service_'):
         service_names = {
             'service_games': 'شحن ألعاب 🕹',
             'service_apps': 'شحن تطبيقات 📱',
@@ -196,26 +322,15 @@ def handle_callbacks(call):
         bot.answer_callback_query(call.id, f"تم اختيار: {service_names.get(data)}")
         bot.send_message(call.message.chat.id, f"لقد اخترت قسم ({service_names.get(data)}). يمكنك إتمام الطلب عبر التواصل مع الإدارة.")
 
-    elif data in ['pay_sham', 'pay_syriatel', 'pay_mtn']:
-        currency_markup = types.InlineKeyboardMarkup()
-        currency_markup.add(types.InlineKeyboardButton('💵 ليرة سورية', callback_data=f'curr_syp_{data}'))
-        currency_markup.add(types.InlineKeyboardButton('💵 دولار أمريكي', callback_data=f'curr_usd_{data}'))
-        
-        method_names = {'pay_sham': 'Sham Cash 🟩', 'pay_syriatel': 'Syriatel Cash 🟥', 'pay_mtn': 'MTN Cash 🟨'}
+    elif data in ['pay_syriatel', 'pay_mtn']:
         bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, f"اختر العملة للدفع عبر {method_names.get(data)}:", reply_markup=currency_markup)
-
-    elif data.startswith('curr_'):
-        parts = data.split('_')
-        currency = parts[1].upper()
-        bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, f"لقد اخترت الدفع بـ ({currency}). يرجى تحويل المبلغ وإرسال إيصال التحويل إلى الدعم الفني لإتمام الشحن.")
+        bot.send_message(call.message.chat.id, "هذه الطريقة قيد المفعيل قريباً.")
 
     elif data == 'top_up_balance':
         show_topup_methods(call.message)
 
     elif data.startswith('adm_'):
-        if call.from_user.id != ADMIN_ID:
+        if user_id != ADMIN_ID:
             bot.answer_callback_query(call.id, "هذا الزر مخصص للأدمن فقط!", show_alert=True)
             return
         
@@ -229,7 +344,7 @@ def handle_callbacks(call):
             'adm_add_admin': "أرسل آيدي المستخدم الجديد لتعيينه كأدمن.",
             'adm_change_link': "أرسل رابط الموقع أو المنصة البديل للربط.",
             'adm_broadcast': "أرسل النص المراد بثه وإرساله لجميع العملاء داخل البوت.",
-            'adm_exchange_rate': f"سعر الصرف الحالي هو: {exchange_rate} ل.س. (يمكنك برمجياً لاحقاً جعله يستقبل السعر الجديد عبر رسالة).",
+            'adm_exchange_rate': f"سعر الصرف الحالي هو: {exchange_rate} ل.س.",
             'adm_ban': "أرسل آيدي المستخدم المراد حظره.",
             'adm_unban': "أرسل آيدي المستخدم المراد فك الحظر عنه."
         }
