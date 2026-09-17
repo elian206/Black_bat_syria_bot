@@ -1,4 +1,5 @@
 import telebot
+from telebot import types
 from flask import Flask
 from threading import Thread
 
@@ -6,17 +7,219 @@ TOKEN = '8909052904:AAHEsWa85CbV5Kwxs4Y1kG7h7TMtHpx-TMw'
 bot = telebot.TeleBot(TOKEN)
 
 ADMIN_ID = 697930035
+CHANNEL_USERNAME = '@black1_bat_syria'  # قناة الاشتراك الإجباري
 
+# قواعد بيانات مؤقتة (يمكن لاحقاً ربطها بقاعدة بيانات حقيقية مثل SQLite)
+users_db = {}
+total_orders_global = 142  # عدد الطلبات الإجمالي لجميع الزبائن
+
+# وظيفة التحقق من الاشتراك الإجباري
+def check_subscription(user_id):
+    try:
+        member = bot.get_chat_member(CHANNEL_USERNAME, user_id)
+        if member.status in ['member', 'administrator', 'creator']:
+            return True
+    except Exception:
+        pass
+    return False
+
+# أمر البدء والتحقق من الاشتراك
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "أهلاً بك في متجر BLACK BAT للخدمات الرقمية!")
+    user_id = message.from_user.id
+    
+    # تسجيل المستخدم إذا لم يكن موجوداً
+    if user_id not in users_db:
+        users_db[user_id] = {
+            'name': message.from_user.first_name,
+            'balance': 0.0,
+            'spent': 0.0,
+            'orders': 0,
+            'banned': False
+        }
+    
+    # التحقق من الحظر
+    if users_db[user_id]['banned']:
+        bot.reply_to(message, "عذراً، أنت محظور من استخدام هذا البوت.")
+        return
 
-# --- Keep-alive server for Render ---
+    # التحقق من الاشتراك الإجباري
+    if not check_subscription(user_id):
+        markup_sub = types.InlineKeyboardMarkup()
+        btn_channel = types.InlineKeyboardButton('📢 اشترك في القناة الان', url='https://t.me/black1_bat_syria')
+        btn_check = types.InlineKeyboardButton('✅ تحقق من الاشتراك', callback_data='check_sub')
+        markup_sub.add(btn_channel)
+        markup_sub.add(btn_check)
+        
+        bot.reply_to(message, "⚠️ عذراً، يجب عليك الاشتراك في قناة المتجر أولاً لتتمكن من استخدام البوت.\n\nرابط القناة: https://t.me/black1_bat_syria\n\nبعد الاشتراك، اضغط على زر التحقق بالأسفل 👇", reply_markup=markup_sub)
+        return
+
+    show_main_menu(message.chat.id, message.from_user.first_name)
+
+def show_main_menu(chat_id, user_name):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    btn1 = types.KeyboardButton('🛍 خدمات متجرنا')
+    btn2 = types.KeyboardButton('👤 حسابك')
+    btn3 = types.KeyboardButton('💳 تعبئة رصيد')
+    btn4 = types.KeyboardButton(f'📊 الطلبات المنفذة: {total_orders_global}')
+    
+    if chat_id == ADMIN_ID:
+        btn_admin = types.KeyboardButton('⚙️ لوحة تحكم الأدمن')
+        markup.add(btn1)
+        markup.add(btn2, btn3)
+        markup.add(btn4, btn_admin)
+    else:
+        markup.add(btn1)
+        markup.add(btn2, btn3)
+        markup.add(btn4)
+    
+    welcome_msg = (
+        f"أهلاً بك {user_name} بمتجر BLACK BAT 📱\n"
+        f"نشكرك على التعامل معنا 🤝\n"
+        f"قم باختيار ماذا تريد من خدماتنا ⏬"
+    )
+    bot.send_message(chat_id, welcome_msg, reply_markup=markup)
+
+# زر التحقق من الاشتراك
+@bot.callback_query_handler(func=lambda call: call.data == 'check_sub')
+def verify_sub(call):
+    user_id = call.from_user.id
+    if check_subscription(user_id):
+        bot.answer_callback_query(call.id, "تم التحقق بنجاح! أهلاً بك.")
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+        show_main_menu(call.message.chat.id, call.from_user.first_name)
+    else:
+        bot.answer_callback_query(call.id, "لم تقم بالاشتراك بعد، يرجى الاشتراك ومحاولة مجدداً.", show_alert=True)
+
+# معالجة الأزرار النصية الرئيسية
+@bot.message_handler(func=lambda message: True)
+def handle_text_messages(message):
+    user_id = message.from_user.id
+    
+    if user_id in users_db and users_db[user_id]['banned']:
+        return
+
+    if message.text == '🛍 خدمات متجرنا':
+        markup_services = types.InlineKeyboardMarkup()
+        markup_services.add(types.InlineKeyboardButton('🕹 شحن ألعاب', callback_data='service_games'))
+        markup_services.add(types.InlineKeyboardButton('📱 شحن تطبيقات', callback_data='service_apps'))
+        markup_services.add(types.InlineKeyboardButton('🤳 دعم حسابات', callback_data='service_support'))
+        markup_services.add(types.InlineKeyboardButton('📲 بيع حسابات', callback_data='service_accounts'))
+        
+        bot.reply_to(message, "اهلا بك في خدماتنا، نتمنا ان تعجبك.\nاختر الخدمة التي تريدها ⏬", reply_markup=markup_services)
+
+    elif message.text == '👤 حسابك':
+        u_data = users_db.get(user_id, {'name': message.from_user.first_name, 'balance': 0.0, 'spent': 0.0, 'orders': 0})
+        
+        account_info = (
+            f"👤 **معلومات حسابك الشخصي:**\n\n"
+            f"▫️ اسمك: {u_data['name']}\n"
+            f"▫️ رصيدك: {u_data['balance']} $\n"
+            f"▫️ مصروفك: {u_data['spent']} $\n"
+            f"▫️ عدد طلباتك: {u_data['orders']}"
+        )
+        
+        markup_account = types.InlineKeyboardMarkup()
+        markup_account.add(types.InlineKeyboardButton('💳 تعبئة رصيدك', callback_data='top_up_balance'))
+        bot.reply_to(message, account_info, parse_mode='Markdown', reply_markup=markup_account)
+
+    elif message.text == '💳 تعبئة رصيد' or message.text == 'تعبئة رصيد':
+        show_topup_methods(message)
+
+    elif message.text == '⚙️ لوحة تحكم الأدمن' and user_id == ADMIN_ID:
+        show_admin_panel(message)
+
+def show_topup_methods(message):
+    markup_topup = types.InlineKeyboardMarkup()
+    markup_topup.add(types.InlineKeyboardButton('🟩 Sham Cash', callback_data='pay_sham'))
+    markup_topup.add(types.InlineKeyboardButton('🟥 Syriatel Cash', callback_data='pay_syriatel'))
+    markup_topup.add(types.InlineKeyboardButton('🟨 MTN Cash', callback_data='pay_mtn'))
+    
+    bot.reply_to(message, "💳 اختر طريقة تعبئة الرصيد المفضلة لديك:", reply_markup=markup_topup)
+
+def show_admin_panel(message):
+    admin_text = "⚙️ **لوحة تحكم الأدمن الرئيسية:**\nاختر العملية المطلوبة:"
+    markup_admin = types.InlineKeyboardMarkup()
+    markup_admin.add(types.InlineKeyboardButton('➕ اضافة رصيد يدوي', callback_data='adm_add_balance'))
+    markup_admin.add(types.InlineKeyboardButton('➖ خصم رصيد يدوي', callback_data='adm_sub_balance'))
+    markup_admin.add(types.InlineKeyboardButton('➕ اضافة أزرار', callback_data='adm_add_btn'))
+    markup_admin.add(types.InlineKeyboardButton('❌ حذف أزرار', callback_data='adm_del_btn'))
+    markup_admin.add(types.InlineKeyboardButton('💳 طرق التعبئة', callback_data='adm_pay_methods'))
+    markup_admin.add(types.InlineKeyboardButton('👥 سجل جميع العملاء', callback_data='adm_users_list'))
+    markup_admin.add(types.InlineKeyboardButton('👑 إضافة أدمن', callback_data='adm_add_admin'))
+    markup_admin.add(types.InlineKeyboardButton('🔗 تغيير ربط المواقع', callback_data='adm_change_link'))
+    markup_admin.add(types.InlineKeyboardButton('📢 رسالة للجميع', callback_data='adm_broadcast'))
+    markup_admin.add(types.InlineKeyboardButton('💱 تغيير سعر الصرف', callback_data='adm_exchange_rate'))
+    markup_admin.add(types.InlineKeyboardButton('🚫 حظر مستخدم', callback_data='adm_ban'))
+    markup_admin.add(types.InlineKeyboardButton('✅ فك الحظر', callback_data='adm_unban'))
+    
+    bot.send_message(message.chat.id, admin_text, parse_mode='Markdown', reply_markup=markup_admin)
+
+# معالجة الأزرار الشفافة (Callbacks)
+@bot.callback_query_handler(func=lambda call: True)
+def handle_callbacks(call):
+    data = call.data
+    
+    # تفاعلات خدمات المتجر
+    if data.startswith('service_'):
+        service_names = {
+            'service_games': 'شحن ألعاب 🕹',
+            'service_apps': 'شحن تطبيقات 📱',
+            'service_support': 'دعم حسابات 🤳',
+            'service_accounts': 'بيع حسابات 📲'
+        }
+        bot.answer_callback_query(call.id, f"تم اختيار: {service_names.get(data)}")
+        bot.send_message(call.message.chat.id, f"لقد اخترت قسم ({service_names.get(data)}). يمكنك إتمام الطلب عبر التواصل مع الإدارة أو اختيار التفاصيل المطلوبة.")
+
+    # طرق تعبئة الرصيد
+    elif data in ['pay_sham', 'pay_syriatel', 'pay_mtn']:
+        currency_markup = types.InlineKeyboardMarkup()
+        currency_markup.add(types.InlineKeyboardButton('💵 ليرة سورية', callback_data=f'curr_syp_{data}'))
+        currency_markup.add(types.InlineKeyboardButton('💵 دولار أمريكي', callback_data=f'curr_usd_{data}'))
+        
+        method_names = {'pay_sham': 'Sham Cash 🟩', 'pay_syriatel': 'Syriatel Cash 🟥', 'pay_mtn': 'MTN Cash 🟨'}
+        bot.answer_callback_query(call.id)
+        bot.send_message(call.message.chat.id, f"اختر العملة للدفع عبر {method_names.get(data)}:", reply_markup=currency_markup)
+
+    elif data.startswith('curr_'):
+        parts = data.split('_')
+        currency = parts[1].upper()
+        method = parts[2]
+        bot.answer_callback_query(call.id)
+        bot.send_message(call.message.chat.id, f"لقد اخترت الدفع بـ ({currency}) عبر طريقة الدفع المختارة. يرجى تحويل المبلغ وإرسال إيصال التحويل إلى الدعم الفني لإتمام الشحن.")
+
+    elif data == 'top_up_balance':
+        show_topup_methods(call.message)
+
+    # أزرار لوحة تحكم الأدمن
+    elif data.startswith('adm_'):
+        if call.from_user.id != ADMIN_ID:
+            bot.answer_callback_query(call.id, "هذا الزر مخصص للأدمن فقط!", show_alert=True)
+            return
+        
+        actions_map = {
+            'adm_add_balance': "أرسل المعرف والآيدي والمبلغ لإضافة الرصيد يدويًا.",
+            'adm_sub_balance': "أرسل المعرف والآيدي والمبلغ لخصم الرصيد يدويًا.",
+            'adm_add_btn': "أدخل تفاصيل الزر الجديد المراد إضافته.",
+            'adm_del_btn': "اختر الزر المراد حذفه من القوائم.",
+            'adm_pay_methods': "إدارة وتعديل طرق تعبئة الرصيد المتاحة.",
+            'adm_users_list': f"📊 إجمالي العملاء المسجلين: {len(users_db)} مستخدم.",
+            'adm_add_admin': "أرسل آيدي المستخدم الجديد لتعيينه كأدمن.",
+            'adm_change_link': "أرسل رابط الموقع أو المنصة البديل للربط.",
+            'adm_broadcast': "أرسل النص المراد بثه وإرساله لجميع العملاء داخل البوت.",
+            'adm_exchange_rate': "أدخل سعر الصرف الجديد.",
+            'adm_ban': "أرسل آيدي المستخدم المراد حظره.",
+            'adm_unban': "أرسل آيدي المستخدم المراد فك الحظر عنه."
+        }
+        bot.answer_callback_query(call.id)
+        bot.send_message(call.message.chat.id, f"🛠 [لوحة التحكم]:\n{actions_map.get(data, 'جاري التنفيذ...')}")
+
+# --- Keep-alive server for Render 24/7 ---
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot is running!"
+    return "Bot is running 24/7 successfully!"
 
 def run():
     app.run(host='0.0.0.0', port=10000)
@@ -28,5 +231,3 @@ def keep_alive():
 if __name__ == "__main__":
     keep_alive()
     bot.infinity_polling(skip_pending=True)
-
-
