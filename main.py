@@ -94,15 +94,15 @@ def format_price(user_id, price_in_usd):
 def create_mhd_order(product_id, quantity, player_id):
     try:
         unique_order_uuid = str(uuid.uuid4())
-        url = f"{API_BASE}/client/api/newOrder/{product_id}"
+        url = f"{API_BASE}/client/api/newOrder/{product_id}/params"
         
-        payload = {
+        params = {
             "qty": quantity,
             "playerId": player_id,
             "order_uuid": unique_order_uuid,
         }
         
-        response = requests.post(url, headers=api_headers, json=payload)
+        response = requests.get(url, headers=api_headers, params=params)
         
         try:
             res_json = response.json()
@@ -117,14 +117,14 @@ def create_mhd_order(product_id, quantity, player_id):
 def create_mhd_code_order(product_id, quantity=1):
     try:
         unique_order_uuid = str(uuid.uuid4())
-        url = f"{API_BASE}/client/api/newOrder/{product_id}"
+        url = f"{API_BASE}/client/api/newOrder/{product_id}/params"
         
-        payload = {
+        params = {
             "qty": quantity,
             "order_uuid": unique_order_uuid,
         }
         
-        response = requests.post(url, headers=api_headers, json=payload)
+        response = requests.get(url, headers=api_headers, params=params)
         
         try:
             res_json = response.json()
