@@ -240,14 +240,15 @@ def handle_text_messages(message):
             u_name = users_db.get(user_id, {}).get('name', message.from_user.first_name)
             amount = pending_topup[user_id]['amount']
             curr_type = pending_topup[user_id]['curr_type']
+            method_name = pending_topup[user_id]['method_name']
             
-            bot.reply_to(message, "تم استلام طلب تعبئة رصيدك، بانتظار موافقة الإدارة ✅")
+            bot.reply_to(message, "تم استلام طلب تعبئة رصيدك ستوافق عليها الإدارة ✅")
             
             admin_msg = (
-                f"📌 طلب تعبئة رصيد جديد (Sham Cash - {curr_type}):\n\n"
+                f"📌 طلب تعبئة رصيد جديد ({method_name}):\n\n"
                 f"📌 اسم المستخدم: {u_name}\n"
-                f"📌 ايدي الحساب: `{user_id}`\n"
-                f"📌 المبلغ: {amount} {'$' if curr_type=='USD' else 'ل.س'}\n"
+                f"📌 ايدي حسابه التلغرام: `{user_id}`\n"
+                f"📌 مبلغ: {amount} {'$' if curr_type=='USD' else 'ل.س'}\n"
                 f"📌 رقم العملية: {op_id}"
             )
             
@@ -322,8 +323,8 @@ def show_topup_methods(message):
     markup_topup = types.InlineKeyboardMarkup()
     markup_topup.add(types.InlineKeyboardButton('🟩 Sham Cash (تحويل دولار 💵)', callback_data='pay_sham_usd'))
     markup_topup.add(types.InlineKeyboardButton('🟩 Sham Cash (تحويل ليرة سورية 🇸🇾)', callback_data='pay_sham_syp'))
-    markup_topup.add(types.InlineKeyboardButton('🟥 Syriatel Cash', callback_data='pay_syriatel'))
-    markup_topup.add(types.InlineKeyboardButton('🟨 MTN Cash', callback_data='pay_mtn'))
+    markup_topup.add(types.InlineKeyboardButton('🟥 Syriatel Cash (ليرة سورية 🇸🇾)', callback_data='pay_syriatel'))
+    markup_topup.add(types.InlineKeyboardButton('🟨 MTN Cash (ليرة سورية 🇸🇾)', callback_data='pay_mtn'))
     
     bot.reply_to(message, "💳 اختر طريقة تعبئة الرصيد المفضلة لديك:", reply_markup=markup_topup)
 
@@ -369,7 +370,7 @@ def handle_callbacks(call):
             f"اسم الحساب: جورج عيسى بركات."
         )
         bot.send_message(call.message.chat.id, sham_msg)
-        pending_topup[user_id] = {'state': 'waiting_amount', 'curr_type': 'USD'}
+        pending_topup[user_id] = {'state': 'waiting_amount', 'curr_type': 'USD', 'method_name': 'Sham Cash (USD)'}
         bot.send_message(call.message.chat.id, "ادخل مبلغ الدولار الذي أرسلته (مثال: 5) ⏬")
 
     elif data == 'pay_sham_syp':
@@ -381,8 +382,33 @@ def handle_callbacks(call):
             f"اسم الحساب: جورج عيسى بركات."
         )
         bot.send_message(call.message.chat.id, sham_msg)
-        pending_topup[user_id] = {'state': 'waiting_amount', 'curr_type': 'SYP'}
-        bot.send_message(call.message.chat.id, "ادخل مبلغ الليرات السورية الذي أرسلته (مثال: 1000) ⏬")
+        pending_topup[user_id] = {'state': 'waiting_amount', 'curr_type': 'SYP', 'method_name': 'Sham Cash (SYP)'}
+        bot.send_message(call.message.chat.id, "ادخل المبلغ الزي ارسلته ⏬")
+
+    elif data == 'pay_syriatel':
+        bot.answer_callback_query(call.id)
+        syriatel_msg = (
+            f"تحويل Syriatel Cash ليرة سورية 💵\n"
+            f"كل 1$ = {exchange_rate:,} ل.س\n\n"
+            f"كود تحويل ⏪ 92189062 \n"
+            f"⚠️ التحويل حصرا من خيار (تحويل يدوي) اذا قمت بتحويل رصيد عادي لن يتم الموافقة ع طلب التعبئة."
+        )
+        bot.send_message(call.message.chat.id, syriatel_msg)
+        pending_topup[user_id] = {'state': 'waiting_amount', 'curr_type': 'SYP', 'method_name': 'Syriatel Cash'}
+        bot.send_message(call.message.chat.id, "ادخل المبلغ الزي ارسلته ⏬")
+
+    elif data == 'pay_mtn':
+        bot.answer_callback_query(call.id)
+        mtn_msg = (
+            f"تحويل MTN Cash ليرة سورية 💵\n"
+            f"كل 1$ = {exchange_rate:,} ل.س\n\n"
+            f"كود تحويل ⏬\n"
+            f" 8338 3112 0672 4992 \n"
+            f"⚠️ التحويل حصرا من خيار (عن طريق رقم المحفظة) اذا قمت بتحويل رصيد عادي لن يتم الموافقة ع طلب التعبئة."
+        )
+        bot.send_message(call.message.chat.id, mtn_msg)
+        pending_topup[user_id] = {'state': 'waiting_amount', 'curr_type': 'SYP', 'method_name': 'MTN Cash'}
+        bot.send_message(call.message.chat.id, "ادخل المبلغ الزي ارسلته ⏬")
 
     elif data.startswith('approve_topup_'):
         if user_id != ADMIN_ID:
@@ -401,7 +427,6 @@ def handle_callbacks(call):
         except Exception:
             raw_amount = 0.0
 
-        # التعديل الجوهري هنا: إذا كانت العملة ليرة سورية (SYP)، نقسم المبلغ على سعر الصرف ليتحول إلى دولار
         if curr_type == 'SYP':
             added_usd = raw_amount / exchange_rate
         else:
@@ -424,10 +449,9 @@ def handle_callbacks(call):
         
         try:
             client_msg = (
-                f"✅ تم الموافقة على طلب تعبئة الرصيد!\n"
-                f"تم اضافة المبلغ: {amount_str} {'$' if curr_type=='USD' else 'ل.س'} (يعادل {added_usd:.2f} $)\n"
-                f"رصيدك الحالي: {disp_bal}\n"
-                f"استمتع بطلب من خدماتنا 🛍"
+                f"تم اضافة المبلغ:{amount_str} {'$' if curr_type=='USD' else 'ل.س'}\n"
+                f"رصيدك الان {disp_bal}\n"
+                f"استمتع بطلب من خدماتنا"
             )
             bot.send_message(target_user_id, client_msg)
         except Exception:
@@ -458,10 +482,6 @@ def handle_callbacks(call):
         }
         bot.answer_callback_query(call.id, f"تم اختيار: {service_names.get(data)}")
         bot.send_message(call.message.chat.id, f"لقد اخترت قسم ({service_names.get(data)}). يمكنك إتمام الطلب عبر التواصل مع الإدارة.")
-
-    elif data in ['pay_syriatel', 'pay_mtn']:
-        bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, "هذه الطريقة قيد التفعيل قريباً.")
 
     elif data == 'top_up_balance':
         show_topup_methods(call.message)
