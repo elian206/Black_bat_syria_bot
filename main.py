@@ -545,20 +545,52 @@ def handle_callbacks(call):
     elif data in ['pay_sham_usd', 'pay_sham_syp', 'pay_syriatel', 'pay_mtn']:
         bot.answer_callback_query(call.id)
         curr_type = 'USD' if data == 'pay_sham_usd' else 'SYP'
-        method_names = {
-            'pay_sham_usd': 'Sham Cash (دولار)',
-            'pay_sham_syp': 'Sham Cash (ليرة سورية)',
-            'pay_syriatel': 'Syriatel Cash',
-            'pay_mtn': 'MTN Cash'
-        }
-        m_name = method_names[data]
         
+        if data == 'pay_sham_usd':
+            m_name = 'Sham Cash (دولار)'
+            details_msg = (
+                f"🟩 **تحويل Sham Cash (دولار 💵)**\n\n"
+                f"قم بالتحويل على هذا الحساب ⏬\n"
+                f"`ebae7d2aa7d10e62f02b1199d87208f4`\n"
+                f"اسم الحساب: جورج عيسى بركات.\n\n"
+                f"الرجاء إرسال **المبلغ المراد تعبئته** في رسالة الآن ⏬"
+            )
+        elif data == 'pay_sham_syp':
+            m_name = 'Sham Cash (ليرة سورية)'
+            details_msg = (
+                f"🟩 **تحويل Sham Cash ليرة سورية 💵**\n\n"
+                f"كل 1$ = {exchange_rate:,} ل.س\n"
+                f"اقل مبلغ للتعبئة هو: 1 دولار 💲\n\n"
+                f"قم بالتحويل على هذا الحساب ⏬\n"
+                f"`ebae7d2aa7d10e62f02b1199d87208f4`\n"
+                f"اسم الحساب: جورج عيسى بركات.\n\n"
+                f"الرجاء إرسال **المبلغ المراد تعبئته** في رسالة الآن ⏬"
+            )
+        elif data == 'pay_syriatel':
+            m_name = 'Syriatel Cash'
+            details_msg = (
+                f"🟥 **تحويل Syriatel Cash ليرة سورية 💵**\n\n"
+                f"كل 1$ = {exchange_rate:,} ل.س\n\n"
+                f"كود تحويل ⏪ `92189062`\n\n"
+                f"⚠️ التحويل حصرا من خيار (تحويل يدوي) اذا قمت بتحويل رصيد عادي لن يتم الموافقة ع طلب التعبئة.\n\n"
+                f"الرجاء إرسال **المبلغ المراد تعبئته** في رسالة الآن ⏬"
+            )
+        else:
+            m_name = 'MTN Cash'
+            details_msg = (
+                f"🟨 **تحويل MTN Cash ليرة سورية 💵**\n\n"
+                f"كل 1$ = {exchange_rate:,} ل.س\n\n"
+                f"كود تحويل ⏬\n`8338 3112 0672 4992`\n\n"
+                f"⚠️ التحويل حصرا من خيار (عن طريق رقم المحفظة) اذا قمت بتحويل رصيد عادي لن يتم الموافقة ع طلب التعبئة.\n\n"
+                f"الرجاء إرسال **المبلغ المراد تعبئته** في رسالة الآن ⏬"
+            )
+
         pending_topup[user_id] = {
             'method_name': m_name,
             'curr_type': curr_type,
             'state': 'waiting_amount'
         }
-        bot.send_message(call.message.chat.id, f"💳 لقد اخترت الشحن عبر ({m_name}).\n\nالرجاء إرسال **المبلغ المراد تعبئته** في رسالة الآن ⏬", parse_mode='Markdown')
+        bot.send_message(call.message.chat.id, details_msg, parse_mode='Markdown')
         return
 
     elif data.startswith('cat_'):
@@ -676,8 +708,6 @@ def handle_callbacks(call):
 
             if response and response.get("status") == "OK":
                 uuid_val = response.get("order_uuid")
-                
-                # جلب الكود من استجابة الموقع أو رسالة الكود إن وجدت
                 code_content = response.get("code") or response.get("message") or "تم تسليم الكود بنجاح"
                 
                 users_db[user_id]['orders_history'].append({
