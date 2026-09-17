@@ -21,7 +21,6 @@ exchange_rate = 15000
 pending_topup = {}
 admin_states = {}
 
-# متغير للتحكم بحالة تشغيل أو إطفاء البوت
 bot_is_active = True
 
 def check_subscription(user_id):
@@ -39,7 +38,7 @@ def send_welcome(message):
     user_id = message.from_user.id
     
     if not bot_is_active and user_id != ADMIN_ID:
-        return # إذا كان البوت مطفأً، يتجاهل المستخدمين العاديين تماماً
+        return
 
     if user_id not in users_db:
         users_db[user_id] = {
@@ -119,7 +118,7 @@ def handle_text_messages(message):
     user_id = message.from_user.id
     
     if not bot_is_active and user_id != ADMIN_ID:
-        return # يتجاهل رسائل المستخدمين إذا كان البوت مطفأً
+        return
     
     if user_id in users_db and users_db[user_id]['banned']:
         return
@@ -354,7 +353,7 @@ def show_admin_panel(message):
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
-    global bot_is_active
+    global bot_is_active, exchange_rate
     data = call.data
     user_id = call.from_user.id
     
@@ -383,7 +382,7 @@ def handle_callbacks(call):
         )
         bot.send_message(call.message.chat.id, sham_msg)
         pending_topup[user_id] = {'state': 'waiting_amount', 'curr_type': 'SYP'}
-        bot.send_message(call.message.chat.id, "ادخل مبلغ الليرات السورية الذي أرسلته (مثال: 150000) ⏬")
+        bot.send_message(call.message.chat.id, "ادخل مبلغ الليرات السورية الذي أرسلته (مثال: 1000) ⏬")
 
     elif data.startswith('approve_topup_'):
         if user_id != ADMIN_ID:
@@ -402,25 +401,31 @@ def handle_callbacks(call):
         except Exception:
             raw_amount = 0.0
 
-        if target_user_id not in users_db:
-            users_db[target_user_id] = {'name': 'مستخدم', 'balance': 0.0, 'spent': 0.0, 'orders': 0, 'banned': False, 'currency': curr_type}
+        # التعديل الجوهري هنا: إذا كانت العملة ليرة سورية (SYP)، نقسم المبلغ على سعر الصرف ليتحول إلى دولار
+        if curr_type == 'SYP':
+            added_usd = raw_amount / exchange_rate
+        else:
+            added_usd = raw_amount
 
-        users_db[target_user_id]['balance'] += raw_amount
+        if target_user_id not in users_db:
+            users_db[target_user_id] = {'name': 'مستخدم', 'balance': 0.0, 'spent': 0.0, 'orders': 0, 'banned': False, 'currency': 'USD'}
+
+        users_db[target_user_id]['balance'] += added_usd
         total_bal = users_db[target_user_id]['balance']
         
         user_curr = users_db[target_user_id].get('currency', 'USD')
         if user_curr == 'SYP':
-            disp_bal = f"{total_bal:,.0f} ل.س"
+            disp_bal = f"{total_bal * exchange_rate:,.0f} ل.س"
         else:
             disp_bal = f"{total_bal} $"
 
         bot.answer_callback_query(call.id, "تمت الموافقة وإضافة الرصيد بنجاح!")
-        bot.edit_message_text(f"{call.message.text}\n\n✅ **الحالة:** تم قبول الطلب من قبل الأدمن وإضافة الرصيد.", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode='Markdown')
+        bot.edit_message_text(f"{call.message.text}\n\n✅ **الحالة:** تم قبول الطلب من قبل الأدمن وتمت إضافة ما يعادل ({added_usd:.2f} $) بنجاح.", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode='Markdown')
         
         try:
             client_msg = (
                 f"✅ تم الموافقة على طلب تعبئة الرصيد!\n"
-                f"تم اضافة المبلغ: {amount_str} {'$' if curr_type=='USD' else 'ل.س'}\n"
+                f"تم اضافة المبلغ: {amount_str} {'$' if curr_type=='USD' else 'ل.س'} (يعادل {added_usd:.2f} $)\n"
                 f"رصيدك الحالي: {disp_bal}\n"
                 f"استمتع بطلب من خدماتنا 🛍"
             )
