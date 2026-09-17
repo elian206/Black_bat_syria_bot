@@ -333,8 +333,16 @@ def handle_text_messages(message):
         if state == 'waiting_amount':
             pending_topup[user_id]['amount'] = message.text.strip()
             pending_topup[user_id]['state'] = 'waiting_operation_id'
-            bot.reply_to(message, "ارسل رقم عملية التحويل ەس")
+            
+            # إضافة الأزرار المطلوبة عند خطوة إرسال رقم العملية/العملة
+            markup_confirm_topup = types.InlineKeyboardMarkup()
+            markup_confirm_topup.add(
+                types.InlineKeyboardButton('نعم ✅', callback_data='topup_confirm_yes'),
+                types.InlineKeyboardButton('لا ❌', callback_data='topup_confirm_no')
+            )
+            bot.reply_to(message, "ارسل رقم العملة (رقم العملية) ولتأكيد الطلب اضغط الزر المناسب:", reply_markup=markup_confirm_topup)
             return
+            
         elif state == 'waiting_operation_id':
             op_id = message.text.strip()
             pending_topup[user_id]['op_id'] = op_id
@@ -645,6 +653,26 @@ def handle_callbacks(call):
             'state': 'waiting_amount'
         }
         bot.send_message(call.message.chat.id, details_msg, parse_mode='Markdown')
+        return
+
+    # معالجة أزرار نعم ولا الخاصة بتعبئة الرصيد
+    elif data == 'topup_confirm_yes':
+        if user_id not in pending_topup:
+            bot.answer_callback_query(call.id, "انتهت الجلسة.", show_alert=True)
+            return
+        bot.answer_callback_query(call.id, "تم التأكيد، يرجى إرسال رقم العملية الآن:")
+        bot.edit_message_text("أرسل الآن **رقم العملية (رقم التحويل)** في رسالة:", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode='Markdown')
+        return
+
+    elif data == 'topup_confirm_no':
+        if user_id in pending_topup:
+            del pending_topup[user_id]
+        bot.answer_callback_query(call.id, "تم الإلغاء والإرجاع إلى قائمة تعبئة الرصيد.")
+        try:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+        except Exception:
+            pass
+        show_topup_methods(call.message)
         return
 
     elif data.startswith('cat_'):
@@ -962,8 +990,7 @@ def process_player_id(message):
         f"▫️ السعر: {formatted_price}\n"
         f"▫️ الآيدي: `{player_id}`\n\n"
         f"❓ **تريد اكمال طلبك؟**",
-        parse_mode="Markdown",
-        reply_markup=markup_conf
+        parse_mode="Markdown"قامت      reply_markup=markup_conf
     )
 
 app = Flask('')
