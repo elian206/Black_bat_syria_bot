@@ -17,7 +17,7 @@ except Exception:
 ADMIN_ID = 8534087775
 CHANNEL_USERNAME = '@black1_bat_syria'
 
-API_BASE = "https://mhd-game.com/api"
+API_BASE = "https://mhd-game.com/api/client/api"
 API_TOKEN = "Fluf9aJYBrtQ1a9ywuqrcMh2M4A8UIa8MKsgbyUk0PkYi301WuCqtLtGn4GO"
 api_headers = {"api-token": API_TOKEN}
 
