@@ -688,12 +688,12 @@ def handle_callbacks(call):
     elif data == 'topup_confirm_no':
         if user_id in pending_topup:
             del pending_topup[user_id]
-        bot.answer_callback_query(call.id, "تم الإلغاء والإرجاع إلى القائمة الرئيسية.")
+        bot.answer_callback_query(call.id, "تم الإلغاء والإرجاع إلى القائمة.")
         try:
             bot.delete_message(call.message.chat.id, call.message.message_id)
         except Exception:
             pass
-        show_main_menu(call.message.chat.id, users_db.get(user_id, {}).get('name', 'عزيزنا العميل'), user_id)
+        show_topup_methods(call.message)
         return
 
     elif data.startswith('cat_'):
@@ -868,12 +868,7 @@ def handle_callbacks(call):
         else:
             if user_id in user_temp_code:
                 del user_temp_code[user_id]
-            bot.answer_callback_query(call.id, "تم الإلغاء والإرجاع إلى القائمة الرئيسية.")
-            try:
-                bot.delete_message(call.message.chat.id, call.message.message_id)
-            except Exception:
-                pass
-            show_main_menu(call.message.chat.id, users_db.get(user_id, {}).get('name', 'عزيزنا العميل'), user_id)
+            bot.answer_callback_query(call.id, "تم الإلغاء.")
         return
 
     elif data.startswith('buyprod_'):
@@ -945,14 +940,15 @@ def handle_callbacks(call):
         else:
             if user_id in user_temp_order: 
                 del user_temp_order[user_id]
-            bot.answer_callback_query(call.id, "تم الإلغاء والإرجاع إلى القائمة الرئيسية.")
+            bot.answer_callback_query(call.id, "تم الإلغاء بنجاح.")
             
-            try:
-                bot.delete_message(call.message.chat.id, call.message.message_id)
-            except Exception:
-                pass
-                
-            show_main_menu(call.message.chat.id, users_db.get(user_id, {}).get('name', 'عزيزنا العميل'), user_id)
+            markup_jw = types.InlineKeyboardMarkup()
+            markup_jw.add(types.InlineKeyboardButton("سيرفر 1 🪙", callback_data="jw_srv1"))
+            markup_jw.add(types.InlineKeyboardButton("سيرفر 2 🪙", callback_data="jw_srv2"))
+            markup_jw.add(types.InlineKeyboardButton("زر عرض الاسبوعي 💳", callback_data="buyprod_1259"))
+            markup_jw.add(types.InlineKeyboardButton("مسرعات 🚀", callback_data="jw_speeds"))
+            markup_jw.add(types.InlineKeyboardButton("باقات جاهزة 💳", callback_data="buyprod_108"))
+            bot.send_message(call.message.chat.id, "❌ تم إلغاء الطلب.\n\n🂡 **قسم شحن Jawaker**\nاختر القسم المناسب ⏬", reply_markup=markup_jw)
         return
 
     elif data.startswith('approve_topup_'):
@@ -985,6 +981,25 @@ def handle_callbacks(call):
     elif data.startswith('reject_topup_'):
         if user_id != ADMIN_ID: return
         target_id = int(data.split('_')[2])
-        if target_id in users_db:
-            bot.answer_callback_query(call.id, "تم رفض الطلب.")
-            bot.ed
+        bot.answer_callback_query(call.id, "تم رفض الطلب.")
+        bot.edit_message_text(f"{call.message.text}\n\n❌ **الحالة:** تم رفض الطلب.", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode='Markdown')
+        try:
+            bot.send_message(target_id, "❌ عذراً، تم رفض طلب تعبئة الرصيد من قبل الإدارة. يرجى التأكد من رقم العملية أو التواصل مع الدعم.")
+        except Exception:
+            pass
+
+# تشغيل البوت باستخدام Flask و Threading لضمان الاستقرار
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run_flask():
+    app.run(host='0.0.0.0', port=8080)
+
+if __name__ == "__main__":
+    t = Thread(target=run_flask)
+    t.start()
+    print("Bot is starting...")
+    bot.infinity_polling()
