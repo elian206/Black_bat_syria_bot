@@ -469,7 +469,7 @@ def confirm_code_order_callback(call):
     item = order_info['item']
     
     if users_db[user_id]['balance'] < item['price']:
-        bot.answer_callback_query(call.id, "رصيدك غير كافٍ!", show_alert.True)
+        bot.answer_callback_query(call.id, "رصيدك غير كافٍ!", show_alert=True)
         return
         
     bot.answer_callback_query(call.id, "جاري استخراج الكود...")
