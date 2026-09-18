@@ -72,6 +72,46 @@ store_categories = {
                 {"id": 228, "name": "Prime (من الشهور 3)", "price": 2.96},
                 {"id": 220, "name": "Prime (من الشهور 1)", "price": 0.99}
             ]
+        },
+        "Free Fire 🕹": {
+            "سيرفر 1 💎": [
+                {"id": 6774, "name": "110 جوهرة", "price": 1.05},
+                {"id": 6774, "name": "231 جوهرة", "price": 2.1},
+                {"id": 6775, "name": "583 جوهرة", "price": 5.22},
+                {"id": 6772, "name": "1188 جوهرة", "price": 10.44},
+                {"id": 6776, "name": "2420 جوهرة", "price": 20.82}
+            ],
+            "سيرفر 2 💎": [
+                {"id": 6756, "name": "110 جوهرة", "price": 1.03},
+                {"id": 6757, "name": "231 جوهرة", "price": 2.05},
+                {"id": 6758, "name": "583 جوهرة", "price": 5.17},
+                {"id": 6755, "name": "1188 جوهرة", "price": 10.45},
+                {"id": 6760, "name": "2420 جوهرة", "price": 20.66}
+            ],
+            "عضويات 1 💳": [
+                {"id": 6783, "name": "اسبوعية", "price": 2.4}
+            ],
+            "عضويات 2 💳": [
+                {"id": 3341, "name": "اسبوعية", "price": 2.4},
+                {"id": 3342, "name": "شهرية", "price": 11.13},
+                {"id": 3343, "name": "تصريح بويا", "price": 3.45}
+            ]
+        },
+        "Jawaker 🕹": {
+            "سيرفر 1 🪙": [
+                {"id": 72, "name": "توكنز جواكر سيرفر 1", "price_per_unit": 0.00012, "min_qty": 1000}
+            ],
+            "سيرفر 2 🪙": [
+                {"id": 84, "name": "توكنز جواكر سيرفر 2", "price_per_unit": 0.000121, "min_qty": 1000}
+            ],
+            "خدمات أخرى 💳": [
+                {"id": 1259, "name": "زر عرض الاسبوعي", "price": 21.3},
+                {"id": 167, "name": "مسرعات احمر (1)", "price": 1.75},
+                {"id": 183, "name": "مسرعات احمر (2)", "price": 8.23},
+                {"id": 200, "name": "مسرعات احمر (3)", "price": 15.3},
+                {"id": 961, "name": "مسرعات احمر (4)", "price": 27.85},
+                {"id": 108, "name": "باقات جاهزة 230K توكنز", "price": 28.15}
+            ]
         }
     },
     "📱 شحن تطبيقات": {},
@@ -139,6 +179,7 @@ def send_welcome(message):
     global bot_is_active
     user_id = message.from_user.id
     if not bot_is_active and user_id != ADMIN_ID:
+        bot.reply_to(message, "⚠️ البوت متوقف حالياً للصيانة من قبل الإدارة.")
         return
 
     if user_id not in users_db:
@@ -208,6 +249,39 @@ def handle_text_messages(message):
         return
     
     if user_id in users_db and users_db[user_id]['banned']:
+        return
+
+    if user_id in user_temp_order and user_temp_order[user_id].get('waiting_jawaker_qty'):
+        try:
+            qty = int(message.text.strip())
+            j_data = user_temp_order[user_id]
+            min_q = j_data['min_qty']
+            if qty < min_q:
+                bot.reply_to(message, f"⚠️ أقل كمية مسموحة هي {min_q} توكنز. يرجى إدخال كمية صحيحة:")
+                return
+            
+            total_price = qty * j_data['price_per_unit']
+            user_temp_order[user_id]['quantity'] = qty
+            user_temp_order[user_id]['price'] = total_price
+            user_temp_order[user_id]['waiting_jawaker_qty'] = False
+            user_temp_order[user_id]['waiting_jawaker_id'] = True
+
+            bot.reply_to(message, f"🔹 الكمية المطلوبة: {qty} توكنز\n💵 السعر الإجمالي: {format_price(user_id, total_price)}\n\nالرجاء إرسال **آيدي حسابه (Player ID)** الآن ⏬", parse_mode="Markdown")
+            return
+        except ValueError:
+            bot.reply_to(message, "⚠️ يرجى إرسال رقم صحيح للكمية:")
+            return
+
+    if user_id in user_temp_order and user_temp_order[user_id].get('waiting_jawaker_id'):
+        pid = message.text.strip()
+        user_temp_order[user_id]['player_id'] = pid
+        user_temp_order[user_id]['waiting_jawaker_id'] = False
+        o_info = user_temp_order[user_id]
+
+        markup_conf = types.InlineKeyboardMarkup()
+        markup_conf.add(types.InlineKeyboardButton("نعم ✅", callback_data="confirm_order_yes"), types.InlineKeyboardButton("لا ❌", callback_data="confirm_order_no"))
+        
+        bot.send_message(message.chat.id, f"📋 **ملخص الطلب:**\n▫️ الخدمة: {o_info['product_name']}\n▫️ الكمية: {o_info['quantity']} توكنز\n▫️ السعر الإجمالي: {format_price(user_id, o_info['price'])}\n▫️ الآيدي: `{o_info['player_id']}`\n\n❓ **هل تريد إكمال طلبك؟**", parse_mode="Markdown", reply_markup=markup_conf)
         return
 
     if user_id == ADMIN_ID:
@@ -387,9 +461,11 @@ def show_admin_panel(message):
     admin_text = f"⚙️ **لوحة تحكم الأدمن:**\n{status_text}\nسعر الصرف الحالي: {exchange_rate:,} ل.س\nإجمالي الطلبات الكلي: {total_orders_global}"
     
     markup_admin = types.InlineKeyboardMarkup()
+    toggle_bot_text = '🔴 إطفاء البوت' if bot_is_active else '🟢 تشغيل البوت'
+    markup_admin.add(types.InlineKeyboardButton(toggle_bot_text, callback_data='adm_toggle_bot'))
+    markup_admin.add(types.InlineKeyboardButton('📢 إرسال رسالة للجميع', callback_data='adm_broadcast'))
     markup_admin.add(types.InlineKeyboardButton('💱 تغيير سعر الصرف', callback_data='adm_exchange_rate'))
     markup_admin.add(types.InlineKeyboardButton('➕ إضافة رصيد يدوي', callback_data='adm_add_bal'), types.InlineKeyboardButton('➖ خصم رصيد يدوي', callback_data='adm_deduct_bal'))
-    markup_admin.add(types.InlineKeyboardButton('📢 إرسال رسالة للجميع', callback_data='adm_broadcast'))
     markup_admin.add(types.InlineKeyboardButton('👥 سجل العملاء', callback_data='adm_users_log'))
     markup_admin.add(types.InlineKeyboardButton('💻 كود البوت', callback_data='adm_get_source_code'))
     
@@ -415,6 +491,28 @@ def handle_callbacks(call):
             bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=markup_inline)
         except Exception:
             pass
+        return
+
+    elif data == 'adm_toggle_bot':
+        if user_id != ADMIN_ID:
+            return
+        bot_is_active = not bot_is_active
+        status_msg = "🟢 تم تشغيل البوت بنجاح!" if bot_is_active else "🔴 تم إطفاء البوت بنجاح!"
+        bot.answer_callback_query(call.id, status_msg)
+        try:
+            status_text = "🟢 حالة البوت: يعمل" if bot_is_active else "🔴 حالة البوت: متوقف"
+            admin_text = f"⚙️ **لوحة تحكم الأدمن:**\n{status_text}\nسعر الصرف الحالي: {exchange_rate:,} ل.س\nإجمالي الطلبات الكلي: {total_orders_global}"
+            markup_admin = types.InlineKeyboardMarkup()
+            toggle_bot_text = '🔴 إطفاء البوت' if bot_is_active else '🟢 تشغيل البوت'
+            markup_admin.add(types.InlineKeyboardButton(toggle_bot_text, callback_data='adm_toggle_bot'))
+            markup_admin.add(types.InlineKeyboardButton('📢 إرسال رسالة للجميع', callback_data='adm_broadcast'))
+            markup_admin.add(types.InlineKeyboardButton('💱 تغيير سعر الصرف', callback_data='adm_exchange_rate'))
+            markup_admin.add(types.InlineKeyboardButton('➕ إضافة رصيد يدوي', callback_data='adm_add_bal'), types.InlineKeyboardButton('➖ خصم رصيد يدوي', callback_data='adm_deduct_bal'))
+            markup_admin.add(types.InlineKeyboardButton('👥 سجل العملاء', callback_data='adm_users_log'))
+            markup_admin.add(types.InlineKeyboardButton('💻 كود البوت', callback_data='adm_get_source_code'))
+            bot.edit_message_text(admin_text, chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode='Markdown', reply_markup=markup_admin)
+        except Exception:
+            show_admin_panel(call.message)
         return
 
     elif data == 'adm_get_source_code':
@@ -589,6 +687,8 @@ def handle_callbacks(call):
         if cat_key == "🎮 شحن ألعاب":
             markup_games = types.InlineKeyboardMarkup()
             markup_games.add(types.InlineKeyboardButton("PUBG Mobile 🕹", callback_data="game_pubg"))
+            markup_games.add(types.InlineKeyboardButton("Free Fire 🕹", callback_data="game_freefire"))
+            markup_games.add(types.InlineKeyboardButton("Jawaker 🕹", callback_data="game_jawaker"))
             bot.send_message(call.message.chat.id, "اختر اللعبة المطلوبة ّ⏬", reply_markup=markup_games)
         return
 
@@ -613,6 +713,36 @@ def handle_callbacks(call):
             bot.send_message(call.message.chat.id, "🎮 **قسم شحن شدات وأعضاء PUBG Mobile**\nاختر القسم المناسب ⏬", reply_markup=markup_pubg)
         return
 
+    elif data == "game_freefire":
+        bot.answer_callback_query(call.id)
+        markup_ff = types.InlineKeyboardMarkup()
+        markup_ff.add(types.InlineKeyboardButton("سيرفر 1 💎", callback_data="ff_srv1"))
+        markup_ff.add(types.InlineKeyboardButton("سيرفر 2 💎", callback_data="ff_srv2"))
+        markup_ff.add(types.InlineKeyboardButton("عضويات 1 💳", callback_data="ff_mems1"))
+        markup_ff.add(types.InlineKeyboardButton("عضويات 2 💳", callback_data="ff_mems2"))
+        bot.send_message(call.message.chat.id, "🔥 **قسم شحن Free Fire**\nاختر القسم المناسب ⏬", reply_markup=markup_ff)
+        return
+
+    elif data == "game_jawaker":
+        bot.answer_callback_query(call.id)
+        markup_jw = types.InlineKeyboardMarkup()
+        markup_jw.add(types.InlineKeyboardButton("سيرفر 1 🪙", callback_data="jw_srv1"))
+        markup_jw.add(types.InlineKeyboardButton("سيرفر 2 🪙", callback_data="jw_srv2"))
+        markup_jw.add(types.InlineKeyboardButton("زر عرض الاسبوعي 💳", callback_data="buyprod_1259"))
+        markup_jw.add(types.InlineKeyboardButton("مسرعات 🚀", callback_data="jw_speeds"))
+        markup_jw.add(types.InlineKeyboardButton("باقات جاهزة 💳", callback_data="buyprod_108"))
+        bot.send_message(call.message.chat.id, "🂡 **قسم شحن Jawaker**\nاختر القسم المناسب ⏬", reply_markup=markup_jw)
+        return
+
+    elif data == "jw_speeds":
+        bot.answer_callback_query(call.id)
+        speeds_list = store_categories["🎮 شحن ألعاب"]["Jawaker 🕹"]["خدمات أخرى 💳"][1:5]
+        markup_spds = types.InlineKeyboardMarkup()
+        for p in speeds_list:
+            markup_spds.add(types.InlineKeyboardButton(f"{p['name']} - {format_price(user_id, p['price'])}", callback_data=f"buyprod_{p['id']}"))
+        bot.send_message(call.message.chat.id, "🚀 اختر مسرعات جواكر المطلوبة:", reply_markup=markup_spds)
+        return
+
     elif data in ["pubg_srv1", "pubg_srv2", "pubg_codes", "pubg_mems"]:
         bot.answer_callback_query(call.id)
         sub_key_map = {
@@ -633,6 +763,40 @@ def handle_callbacks(call):
                 markup_prods.add(types.InlineKeyboardButton(f"{p['name']} - {formatted_p_price}", callback_data=f"buyprod_{p['id']}"))
         
         bot.send_message(call.message.chat.id, f"📦 منتجات {sub_name}:", reply_markup=markup_prods)
+        return
+
+    elif data in ["ff_srv1", "ff_srv2", "ff_mems1", "ff_mems2"]:
+        bot.answer_callback_query(call.id)
+        ff_map = {
+            "ff_srv1": "سيرفر 1 💎",
+            "ff_srv2": "سيرفر 2 💎",
+            "ff_mems1": "عضويات 1 💳",
+            "ff_mems2": "عضويات 2 💳"
+        }
+        sub_name = ff_map[data]
+        products_list = store_categories["🎮 شحن ألعاب"]["Free Fire 🕹"][sub_name]
+        
+        markup_prods = types.InlineKeyboardMarkup()
+        for p in products_list:
+            formatted_p_price = format_price(user_id, p['price'])
+            markup_prods.add(types.InlineKeyboardButton(f"{p['name']} - {formatted_p_price}", callback_data=f"buyprod_{p['id']}"))
+        
+        bot.send_message(call.message.chat.id, f"🔥 منتجات {sub_name}:", reply_markup=markup_prods)
+        return
+
+    elif data in ["jw_srv1", "jw_srv2"]:
+        bot.answer_callback_query(call.id)
+        jw_key = "سيرفر 1 🪙" if data == "jw_srv1" else "سيرفر 2 🪙"
+        jw_info = store_categories["🎮 شحن ألعاب"]["Jawaker 🕹"][jw_key][0]
+        
+        user_temp_order[user_id] = {
+            "product_id": jw_info['id'],
+            "product_name": jw_info['name'],
+            "price_per_unit": jw_info['price_per_unit'],
+            "min_qty": jw_info['min_qty'],
+            "waiting_jawaker_qty": True
+        }
+        bot.send_message(call.message.chat.id, f"🪙 أقدمت على طلب {jw_info['name']}.\nالحد الأدنى للطلب: {jw_info['min_qty']} توكنز.\n\nالرجاء إرسال **الكمية** المطلوبة الآن كرقماً صحيحاً ⏬")
         return
 
     elif data.startswith('buycode_'):
@@ -695,10 +859,20 @@ def handle_callbacks(call):
     elif data.startswith('buyprod_'):
         prod_id = int(data.split('_')[1])
         selected_prod = None
-        for sub_name, plist in store_categories["🎮 شحن ألعاب"]["PUBG Mobile 🕹"].items():
-            if sub_name == "اكواد 📱": continue
-            selected_prod = next((p for p in plist if p['id'] == prod_id), None)
+        
+        # البحث ضمن كل الألعاب المتاحة
+        all_games = store_categories["🎮 شحن ألعاب"]
+        for g_name, g_content in all_games.items():
+            for sub_name, plist in g_content.items():
+                if sub_name == "اكواد 📱": continue
+                selected_prod = next((p for p in plist if p['id'] == prod_id), None)
+                if selected_prod: break
             if selected_prod: break
+            
+        if not selected_prod:
+            # البحث في خدمات جواكر الأخرى
+            other_list = store_categories["🎮 شحن ألعاب"]["Jawaker 🕹"]["خدمات أخرى 💳"]
+            selected_prod = next((p for p in other_list if p['id'] == prod_id), None)
                 
         if not selected_prod:
             bot.answer_callback_query(call.id, "المنتج غير موجود.")
@@ -720,12 +894,19 @@ def handle_callbacks(call):
         if action == 'yes':
             if user_id not in user_temp_order: return
             o_info = user_temp_order[user_id]
+            
+            user_balance = users_db.get(user_id, {}).get('balance', 0.0)
+            if user_balance < o_info['price']:
+                bot.answer_callback_query(call.id, "رصيدك غير كافٍ!", show_alert=True)
+                return
+
             users_db[user_id]['balance'] -= o_info['price']
             users_db[user_id]['spent'] += o_info['price']
             users_db[user_id]['orders_count'] += 1
 
             bot.answer_callback_query(call.id, "جاري إرسال الطلب للموقع...")
-            response = create_mhd_order(product_id=o_info['product_id'], quantity=1, player_id=o_info['player_id'])
+            qty_val = o_info.get('quantity', 1)
+            response = create_mhd_order(product_id=o_info['product_id'], quantity=qty_val, player_id=o_info['player_id'])
 
             if response and response.get("status") == "OK":
                 users_db[user_id]['orders_history'].append({"name": o_info['product_name'], "player_id": o_info['player_id'], "uuid": response.get("order_uuid"), "status": "قيد التنفيذ", "is_code": False})
