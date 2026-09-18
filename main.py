@@ -99,10 +99,10 @@ store_categories = {
         },
         "Jawaker 🕹": {
             "سيرفر 1 🪙": [
-                {"id": 72, "name": "توكنز جواكر سيرفر 1", "price_per_unit": 0.00012, "min_qty": 1000}
+                {"id": 72, "name": "توكنز جواكر سيرفر 1", "price_per_unit": 0.00012, "min_qty": 10000}
             ],
             "سيرفر 2 🪙": [
-                {"id": 84, "name": "توكنز جواكر سيرفر 2", "price_per_unit": 0.000121, "min_qty": 1000}
+                {"id": 84, "name": "توكنز جواكر سيرفر 2", "price_per_unit": 0.000121, "min_qty": 10000}
             ],
             "خدمات أخرى 💳": [
                 {"id": 1259, "name": "زر عرض الاسبوعي", "price": 21.3},
@@ -251,13 +251,14 @@ def handle_text_messages(message):
     if user_id in users_db and users_db[user_id]['banned']:
         return
 
+    # معالجة إدخال كمية جواكر
     if user_id in user_temp_order and user_temp_order[user_id].get('waiting_jawaker_qty'):
         try:
             qty = int(message.text.strip())
             j_data = user_temp_order[user_id]
             min_q = j_data['min_qty']
             if qty < min_q:
-                bot.reply_to(message, f"⚠️ أقل كمية مسموحة هي {min_q} توكنز. يرجى إدخال كمية صحيحة:")
+                bot.reply_to(message, f"⚠️ أقل كمية مسموحة هي {min_q:,} توكنز. يرجى إدخال كمية صحيحة:")
                 return
             
             total_price = qty * j_data['price_per_unit']
@@ -266,12 +267,13 @@ def handle_text_messages(message):
             user_temp_order[user_id]['waiting_jawaker_qty'] = False
             user_temp_order[user_id]['waiting_jawaker_id'] = True
 
-            bot.reply_to(message, f"🔹 الكمية المطلوبة: {qty} توكنز\n💵 السعر الإجمالي: {format_price(user_id, total_price)}\n\nالرجاء إرسال **آيدي حسابه (Player ID)** الآن ⏬", parse_mode="Markdown")
+            bot.reply_to(message, f"🔹 الكمية المطلوبة: {qty:,} توكنز\n💵 السعر الإجمالي: {format_price(user_id, total_price)}\n\nالرجاء إرسال **آيدي حسابه (Player ID)** الآن ⏬", parse_mode="Markdown")
             return
         except ValueError:
             bot.reply_to(message, "⚠️ يرجى إرسال رقم صحيح للكمية:")
             return
 
+    # معالجة إدخال آيدي جواكر
     if user_id in user_temp_order and user_temp_order[user_id].get('waiting_jawaker_id'):
         pid = message.text.strip()
         user_temp_order[user_id]['player_id'] = pid
@@ -281,7 +283,20 @@ def handle_text_messages(message):
         markup_conf = types.InlineKeyboardMarkup()
         markup_conf.add(types.InlineKeyboardButton("نعم ✅", callback_data="confirm_order_yes"), types.InlineKeyboardButton("لا ❌", callback_data="confirm_order_no"))
         
-        bot.send_message(message.chat.id, f"📋 **ملخص الطلب:**\n▫️ الخدمة: {o_info['product_name']}\n▫️ الكمية: {o_info['quantity']} توكنز\n▫️ السعر الإجمالي: {format_price(user_id, o_info['price'])}\n▫️ الآيدي: `{o_info['player_id']}`\n\n❓ **هل تريد إكمال طلبك؟**", parse_mode="Markdown", reply_markup=markup_conf)
+        bot.send_message(message.chat.id, f"📋 **ملخص الطلب:**\n▫️ الخدمة: {o_info['product_name']}\n▫️ الكمية: {o_info['quantity']:,} توكنز\n▫️ السعر الإجمالي: {format_price(user_id, o_info['price'])}\n▫️ الآيدي: `{o_info['player_id']}`\n\n❓ **هل تريد إكمال طلبك؟**", parse_mode="Markdown", reply_markup=markup_conf)
+        return
+
+    # معالجة إدخال الآيدي للخدمات العادية
+    if user_id in user_temp_order and user_temp_order[user_id].get('waiting_player_id'):
+        pid = message.text.strip()
+        user_temp_order[user_id]['player_id'] = pid
+        user_temp_order[user_id]['waiting_player_id'] = False
+        o_info = user_temp_order[user_id]
+
+        markup_conf = types.InlineKeyboardMarkup()
+        markup_conf.add(types.InlineKeyboardButton("نعم ✅", callback_data="confirm_order_yes"), types.InlineKeyboardButton("لا ❌", callback_data="confirm_order_no"))
+        
+        bot.send_message(message.chat.id, f"📋 **ملخص الطلب:**\n▫️ الخدمة: {o_info['product_name']}\n▫️ السعر: {format_price(user_id, o_info['price'])}\n▫️ الآيدي: `{o_info['player_id']}`\n\n❓ **هل تريد إكمال طلبك؟**", parse_mode="Markdown", reply_markup=markup_conf)
         return
 
     if user_id == ADMIN_ID:
@@ -796,7 +811,7 @@ def handle_callbacks(call):
             "min_qty": jw_info['min_qty'],
             "waiting_jawaker_qty": True
         }
-        bot.send_message(call.message.chat.id, f"🪙 أقدمت على طلب {jw_info['name']}.\nالحد الأدنى للطلب: {jw_info['min_qty']} توكنز.\n\nالرجاء إرسال **الكمية** المطلوبة الآن كرقماً صحيحاً ⏬")
+        bot.send_message(call.message.chat.id, f"🪙 أقدمت على طلب {jw_info['name']}.\nالحد الأدنى للطلب: {jw_info['min_qty']:,} توكنز.\n\nالرجاء إرسال **الكمية** المطلوبة الآن كرقماً صحيحاً ⏬")
         return
 
     elif data.startswith('buycode_'):
@@ -860,7 +875,6 @@ def handle_callbacks(call):
         prod_id = int(data.split('_')[1])
         selected_prod = None
         
-        # البحث ضمن كل الألعاب المتاحة
         all_games = store_categories["🎮 شحن ألعاب"]
         for g_name, g_content in all_games.items():
             for sub_name, plist in g_content.items():
@@ -870,7 +884,6 @@ def handle_callbacks(call):
             if selected_prod: break
             
         if not selected_prod:
-            # البحث في خدمات جواكر الأخرى
             other_list = store_categories["🎮 شحن ألعاب"]["Jawaker 🕹"]["خدمات أخرى 💳"]
             selected_prod = next((p for p in other_list if p['id'] == prod_id), None)
                 
@@ -883,16 +896,22 @@ def handle_callbacks(call):
             bot.send_message(call.message.chat.id, "❌ عذراً، رصيدك غير كافي.")
             return
 
-        user_temp_order[user_id] = {"product_id": selected_prod['id'], "product_name": selected_prod['name'], "price": selected_prod['price']}
+        user_temp_order[user_id] = {
+            "product_id": selected_prod['id'], 
+            "product_name": selected_prod['name'], 
+            "price": selected_prod['price'],
+            "waiting_player_id": True
+        }
         bot.answer_callback_query(call.id)
         bot.send_message(call.message.chat.id, f"🔹 الخدمة: {selected_prod['name']}\n💵 السعر: {format_price(user_id, selected_prod['price'])}\n\nالرجاء إرسال **آيدي حسابه (Player ID)** الآن ⏬", parse_mode="Markdown")
-        bot.register_next_step_handler(call.message, process_player_id)
         return
 
     elif data.startswith('confirm_order_'):
         action = data.split('_')[2]
         if action == 'yes':
-            if user_id not in user_temp_order: return
+            if user_id not in user_temp_order: 
+                bot.answer_callback_query(call.id, "انتهت الجلسة أو تم تأكيد الطلب مسبقاً.")
+                return
             o_info = user_temp_order[user_id]
             
             user_balance = users_db.get(user_id, {}).get('balance', 0.0)
@@ -919,8 +938,18 @@ def handle_callbacks(call):
                 bot.send_message(call.message.chat.id, "❌ فشل تنفيذ الطلب، تم إرجاع المبلغ لرصيدك.")
             del user_temp_order[user_id]
         else:
-            if user_id in user_temp_order: del user_temp_order[user_id]
-            bot.answer_callback_query(call.id, "تم الإلغاء.")
+            if user_id in user_temp_order: 
+                del user_temp_order[user_id]
+            bot.answer_callback_query(call.id, "تم الإلغاء بنجاح.")
+            
+            # إعادة التوجيه إلى قسم Jawaker عند الضغط على لا ❌
+            markup_jw = types.InlineKeyboardMarkup()
+            markup_jw.add(types.InlineKeyboardButton("سيرفر 1 🪙", callback_data="jw_srv1"))
+            markup_jw.add(types.InlineKeyboardButton("سيرفر 2 🪙", callback_data="jw_srv2"))
+            markup_jw.add(types.InlineKeyboardButton("زر عرض الاسبوعي 💳", callback_data="buyprod_1259"))
+            markup_jw.add(types.InlineKeyboardButton("مسرعات 🚀", callback_data="jw_speeds"))
+            markup_jw.add(types.InlineKeyboardButton("باقات جاهزة 💳", callback_data="buyprod_108"))
+            bot.send_message(call.message.chat.id, "❌ تم إلغاء الطلب.\n\n🂡 **قسم شحن Jawaker**\nاختر القسم المناسب ⏬", reply_markup=markup_jw)
         return
 
     elif data.startswith('approve_topup_'):
@@ -952,18 +981,6 @@ def handle_callbacks(call):
 
     elif data == 'top_up_balance':
         show_topup_methods(call.message)
-
-def process_player_id(message):
-    user_id = message.from_user.id
-    if user_id not in user_temp_order:
-        return
-    user_temp_order[user_id]['player_id'] = message.text.strip()
-    o_info = user_temp_order[user_id]
-
-    markup_conf = types.InlineKeyboardMarkup()
-    markup_conf.add(types.InlineKeyboardButton("نعم ✅", callback_data="confirm_order_yes"), types.InlineKeyboardButton("لا ❌", callback_data="confirm_order_no"))
-    
-    bot.send_message(message.chat.id, f"📋 **ملخص الطلب:**\n▫️ الخدمة: {o_info['product_name']}\n▫️ السعر: {format_price(user_id, o_info['price'])}\n▫️ الآيدي: `{o_info['player_id']}`\n\n❓ **هل تريد إكمال طلبك؟**", parse_mode="Markdown", reply_markup=markup_conf)
 
 app = Flask('')
 
