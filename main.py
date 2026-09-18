@@ -123,15 +123,6 @@ def create_mhd_code_order(product_id, quantity=1):
     except Exception as e:
         return {"status": "ERROR", "message": str(e)}
 
-def check_mhd_order_status(order_uuid):
-    try:
-        url = f"{API_BASE}/client/api/orderStatus"
-        params = {"order_uuid": order_uuid}
-        response = requests.get(url, headers=api_headers, params=params)
-        return response.json()
-    except Exception as e:
-        return {"status": "ERROR", "message": str(e)}
-
 def check_subscription(user_id):
     try:
         member = bot.get_chat_member(CHANNEL_USERNAME, user_id)
@@ -478,7 +469,7 @@ def confirm_code_order_callback(call):
     item = order_info['item']
     
     if users_db[user_id]['balance'] < item['price']:
-        bot.answer_callback_query(call.id, "رصيدك غير كافٍ!", show_alert=True)
+        bot.answer_callback_query(call.id, "رصيدك غير كافٍ!", show_alert.True)
         return
         
     bot.answer_callback_query(call.id, "جاري استخراج الكود...")
