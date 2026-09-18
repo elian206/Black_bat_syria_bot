@@ -372,7 +372,7 @@ def handle_callbacks(call):
             markup = types.InlineKeyboardMarkup()
             for g_name in games.keys():
                 markup.add(types.InlineKeyboardButton(g_name, callback_data=f"game_{cat_name}_{g_name}"))
-            bot.edit_message_text("اختر اللعبة أو الخدمة:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+            bot.edit_message_text("اختر القسم المناسب:", call.message.chat.id, call.message.message_id, reply_markup=markup)
 
     elif data.startswith("game_"):
         parts = data.split("_", 2)
