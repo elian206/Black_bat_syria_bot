@@ -881,9 +881,9 @@ def handle_callbacks(call):
             response = create_mhd_order(product_id=o_info['product_id'], quantity=qty_val, player_id=o_info['player_id'])
 
             if response and response.get("status") == "OK":
-                users_db[user_id]['orders_history'].append({"name": o_info['product_name'], "player_id": o_info['player_id'], "uuid": response.get("order_uuid"), "status": "قيد التنفيذ", "is_code": False})
                 global total_orders_global
                 total_orders_global += 1
+                users_db[user_id]['orders_history'].append({"name": o_info['product_name'], "player_id": o_info['player_id'], "uuid": response.get("order_uuid"), "status": "قيد التنفيذ", "is_code": False})
                 bot.send_message(call.message.chat.id, "✅ تم تنفيذ طلبك بنجاح 🤝")
             else:
                 users_db[user_id]['balance'] += o_info['price']
