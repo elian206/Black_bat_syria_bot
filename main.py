@@ -386,7 +386,6 @@ def handle_text_messages(message):
                 bot.reply_to(message, f"⚠️ عذراً، الحد الأدنى للإيداع لهذه الطريقة هو {min_limit} {'ل.س' if min_limit > 1 else '$'}. يرجى إدخال مبلغ أكبر:")
                 return
 
-            # التعديل هنا: إذا كان نوع العملة ليرة سورية، يتم قسمة المبلغ على سعر الصرف ليتم حفظه وتخزينه بالدولار بشكل صحيح في رصيد المستخدم لاحقاً
             curr_type = pending_topup[user_id]['curr_type']
             if curr_type == 'SYP':
                 converted_usd_amount = val / exchange_rate
@@ -994,4 +993,6 @@ def handle_callbacks(call):
         if user_id != ADMIN_ID: return
         target_id = int(data.split('_')[2])
         if target_id in pending_topup:
-           
+            t_data = pending_topup[target_id]
+            users_db[target_id]['topup_history'].append(f"رفض طلب تعبئة رصيد ({t_data['method_name']})")
+         
