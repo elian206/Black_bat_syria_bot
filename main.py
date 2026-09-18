@@ -124,8 +124,18 @@ user_temp_order = {}
 user_temp_code = {}
 bot_is_active = True
 
+def check_user_exists(user_id, name="مستخدم"):
+    if user_id not in users_db:
+        users_db[user_id] = {
+            'name': name,
+            'balance': 0.0, 'spent': 0.0, 'orders_count': 0,
+            'banned': False, 'currency': 'USD',
+            'topup_history': [], 'orders_history': []
+        }
+
 def format_price(user_id, price_in_usd):
-    curr = users_db.get(user_id, {}).get('currency', 'USD')
+    check_user_exists(user_id)
+    curr = users_db[user_id].get('currency', 'USD')
     if curr == 'SYP':
         syp_amount = price_in_usd * exchange_rate
         return f"{syp_amount:,.0f} ل.س"
@@ -182,13 +192,7 @@ def send_welcome(message):
         bot.reply_to(message, "⚠️ البوت متوقف حالياً للصيانة من قبل الإدارة.")
         return
 
-    if user_id not in users_db:
-        users_db[user_id] = {
-            'name': message.from_user.first_name,
-            'balance': 0.0, 'spent': 0.0, 'orders_count': 0,
-            'banned': False, 'currency': 'USD',
-            'topup_history': [], 'orders_history': []
-        }
+    check_user_exists(user_id, message.from_user.first_name)
     
     if users_db[user_id]['banned']:
         bot.reply_to(message, "عذراً، أنت محظور من استخدام هذا البوت.")
@@ -205,7 +209,8 @@ def send_welcome(message):
 
 def show_main_menu(chat_id, user_name, user_id):
     global total_orders_global
-    current_curr = users_db.get(user_id, {}).get('currency', 'USD')
+    check_user_exists(user_id, user_name)
+    current_curr = users_db[user_id].get('currency', 'USD')
     curr_btn_text = '💱 العملة: دولار ($)' if current_curr == 'USD' else '💱 العملة: ليرة سورية (ل.س)'
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -248,10 +253,10 @@ def handle_text_messages(message):
     if not bot_is_active and user_id != ADMIN_ID:
         return
     
-    if user_id in users_db and users_db[user_id]['banned']:
+    check_user_exists(user_id, message.from_user.first_name)
+    if users_db[user_id]['banned']:
         return
 
-    # معالجة إدخال كمية جواكر
     if user_id in user_temp_order and user_temp_order[user_id].get('waiting_jawaker_qty'):
         try:
             qty = int(message.text.strip())
@@ -273,7 +278,6 @@ def handle_text_messages(message):
             bot.reply_to(message, "⚠️ يرجى إرسال رقم صحيح للكمية:")
             return
 
-    # معالجة إدخال آيدي جواكر
     if user_id in user_temp_order and user_temp_order[user_id].get('waiting_jawaker_id'):
         pid = message.text.strip()
         user_temp_order[user_id]['player_id'] = pid
@@ -286,7 +290,6 @@ def handle_text_messages(message):
         bot.send_message(message.chat.id, f"📋 **ملخص الطلب:**\n▫️ الخدمة: {o_info['product_name']}\n▫️ الكمية: {o_info['quantity']:,} توكنز\n▫️ السعر الإجمالي: {format_price(user_id, o_info['price'])}\n▫️ الآيدي: `{o_info['player_id']}`\n\n❓ **هل تريد إكمال طلبك؟**", parse_mode="Markdown", reply_markup=markup_conf)
         return
 
-    # معالجة إدخال الآيدي للخدمات العادية
     if user_id in user_temp_order and user_temp_order[user_id].get('waiting_player_id'):
         pid = message.text.strip()
         user_temp_order[user_id]['player_id'] = pid
@@ -320,8 +323,7 @@ def handle_text_messages(message):
                 parts = message.text.strip().split()
                 target_id = int(parts[0])
                 amount = float(parts[1])
-                if target_id not in users_db:
-                    users_db[target_id] = {'name': 'مستخدم', 'balance': 0.0, 'spent': 0.0, 'orders_count': 0, 'banned': False, 'currency': 'USD', 'topup_history': [], 'orders_history': []}
+                check_user_exists(target_id)
                 users_db[target_id]['balance'] += amount
                 users_db[target_id]['topup_history'].append(f"إضافة يدوية من الإدارة: +${amount}")
                 admin_states.clear()
@@ -341,8 +343,7 @@ def handle_text_messages(message):
                 parts = message.text.strip().split()
                 target_id = int(parts[0])
                 amount = float(parts[1])
-                if target_id not in users_db:
-                    users_db[target_id] = {'name': 'مستخدم', 'balance': 0.0, 'spent': 0.0, 'orders_count': 0, 'banned': False, 'currency': 'USD', 'topup_history': [], 'orders_history': []}
+                check_user_exists(target_id)
                 users_db[target_id]['balance'] -= amount
                 users_db[target_id]['topup_history'].append(f"خصم يدوي من الإدارة: -${amount}")
                 admin_states.clear()
@@ -385,7 +386,17 @@ def handle_text_messages(message):
                 bot.reply_to(message, f"⚠️ عذراً، الحد الأدنى للإيداع لهذه الطريقة هو {min_limit} {'ل.س' if min_limit > 1 else '$'}. يرجى إدخال مبلغ أكبر:")
                 return
 
-            pending_topup[user_id]['amount'] = message.text.strip()
+            # التعديل هنا: إذا كان نوع العملة ليرة سورية، يتم قسمة المبلغ على سعر الصرف ليتم حفظه وتخزينه بالدولار بشكل صحيح في رصيد المستخدم لاحقاً
+            curr_type = pending_topup[user_id]['curr_type']
+            if curr_type == 'SYP':
+                converted_usd_amount = val / exchange_rate
+                pending_topup[user_id]['amount_usd'] = converted_usd_amount
+                pending_topup[user_id]['amount_display'] = f"{val:,.0f} ل.س"
+            else:
+                pending_topup[user_id]['amount_usd'] = val
+                pending_topup[user_id]['amount_display'] = f"${val}"
+
+            pending_topup[user_id]['amount_raw'] = val
             pending_topup[user_id]['state'] = 'waiting_operation_id'
             bot.reply_to(message, "الرجاء إرسال **رقم العملية (رقم التحويل)** الآن ⏬", parse_mode='Markdown')
             return
@@ -403,8 +414,7 @@ def handle_text_messages(message):
             return
 
     if '💱 العملة:' in message.text:
-        if user_id not in users_db:
-            users_db[user_id] = {'name': message.from_user.first_name, 'balance': 0.0, 'spent': 0.0, 'orders_count': 0, 'banned': False, 'currency': 'USD', 'topup_history': [], 'orders_history': []}
+        check_user_exists(user_id, message.from_user.first_name)
         current_curr = users_db[user_id]['currency']
         if current_curr == 'USD':
             users_db[user_id]['currency'] = 'SYP'
@@ -428,15 +438,14 @@ def handle_text_messages(message):
         bot.reply_to(message, "اختر القسم المطلوب لتصفح الخدمات والمنتجات ⏬", reply_markup=markup_cats)
 
     elif message.text == '👤 حسابك':
-        if user_id not in users_db:
-            users_db[user_id] = {'name': message.from_user.first_name, 'balance': 0.0, 'spent': 0.0, 'orders_count': 0, 'banned': False, 'currency': 'USD', 'topup_history': [], 'orders_history': []}
+        check_user_exists(user_id, message.from_user.first_name)
         u_data = users_db[user_id]
         curr = u_data.get('currency', 'USD')
         bal = u_data['balance']
         spnt = u_data['spent']
         
-        bal_display = f"{bal * exchange_rate:,.0f} ل.س" if curr == 'SYP' else f"{bal} $"
-        spnt_display = f"{spnt * exchange_rate:,.0f} ل.س" if curr == 'SYP' else f"{spnt} $"
+        bal_display = f"{bal * exchange_rate:,.0f} ل.س" if curr == 'SYP' else f"${bal}"
+        spnt_display = f"{spnt * exchange_rate:,.0f} ل.س" if curr == 'SYP' else f"${spnt}"
 
         account_info = (
             f"👤 **معلومات حسابك الشخصي:**\n\n"
@@ -590,6 +599,7 @@ def handle_callbacks(call):
 
     elif data == 'my_topup_log':
         bot.answer_callback_query(call.id)
+        check_user_exists(user_id, call.from_user.first_name)
         u_data = users_db.get(user_id, {})
         history = u_data.get('topup_history', [])
         if not history:
@@ -601,6 +611,7 @@ def handle_callbacks(call):
 
     elif data == 'my_orders_log':
         bot.answer_callback_query(call.id)
+        check_user_exists(user_id, call.from_user.first_name)
         u_data = users_db.get(user_id, {})
         orders = u_data.get('orders_history', [])
         if not orders:
@@ -616,6 +627,7 @@ def handle_callbacks(call):
 
     elif data == 'refresh_my_orders':
         bot.answer_callback_query(call.id, "جاري تحديث حالات الطلبات...")
+        check_user_exists(user_id, call.from_user.first_name)
         u_data = users_db.get(user_id, {})
         orders = u_data.get('orders_history', [])
         if not orders:
@@ -660,11 +672,11 @@ def handle_callbacks(call):
             bot.answer_callback_query(call.id, "انتهت الجلسة.", show_alert=True)
             return
         
-        u_name = users_db.get(user_id, {}).get('name', call.from_user.first_name)
-        amount = pending_topup[user_id]['amount']
-        curr_type = pending_topup[user_id]['curr_type']
-        method_name = pending_topup[user_id]['method_name']
+        check_user_exists(user_id, call.from_user.first_name)
+        u_name = users_db[user_id].get('name', call.from_user.first_name)
+        amount_display = pending_topup[user_id]['amount_display']
         op_id = pending_topup[user_id]['op_id']
+        method_name = pending_topup[user_id]['method_name']
 
         bot.answer_callback_query(call.id, "تم استلام طلب تعبئة رصيدك ستوافق عليها الإدارة ✅")
         bot.edit_message_text("تم استلام طلب تعبئة رصيدك ستوافق عليها الإدارة ✅", chat_id=call.message.chat.id, message_id=call.message.message_id)
@@ -673,16 +685,15 @@ def handle_callbacks(call):
             f"📌 طلب تعبئة رصيد جديد ({method_name}):\n\n"
             f"📌 اسم المستخدم: {u_name}\n"
             f"📌 ايدي التلغرام: `{user_id}`\n"
-            f"📌 المبلغ: {amount} {'$' if curr_type=='USD' else 'ل.س'}\n"
+            f"📌 المبلغ: {amount_display}\n"
             f"📌 رقم العملية: {op_id}"
         )
         markup_app = types.InlineKeyboardMarkup()
         markup_app.add(
-            types.InlineKeyboardButton('✅ موافق', callback_data=f'approve_topup_{user_id}_{amount}_{curr_type}'),
+            types.InlineKeyboardButton('✅ موافق', callback_data=f'approve_topup_{user_id}'),
             types.InlineKeyboardButton('❌ غير موافق', callback_data=f'reject_topup_{user_id}')
         )
         bot.send_message(ADMIN_ID, admin_msg, parse_mode='Markdown', reply_markup=markup_app)
-        del pending_topup[user_id]
         return
 
     elif data == 'topup_confirm_no':
@@ -822,7 +833,8 @@ def handle_callbacks(call):
             bot.answer_callback_query(call.id, "الكود غير موجود.")
             return
 
-        user_balance = users_db.get(user_id, {}).get('balance', 0.0)
+        check_user_exists(user_id, call.from_user.first_name)
+        user_balance = users_db[user_id].get('balance', 0.0)
         p_price = selected_code['price']
 
         if user_balance < p_price:
@@ -845,6 +857,7 @@ def handle_callbacks(call):
                 bot.answer_callback_query(call.id, "انتهت الجلسة.")
                 return
             
+            check_user_exists(user_id, call.from_user.first_name)
             code_info = user_temp_code[user_id]
             users_db[user_id]['balance'] -= code_info['price']
             users_db[user_id]['spent'] += code_info['price']
@@ -891,7 +904,8 @@ def handle_callbacks(call):
             bot.answer_callback_query(call.id, "المنتج غير موجود.")
             return
 
-        if users_db.get(user_id, {}).get('balance', 0.0) < selected_prod['price']:
+        check_user_exists(user_id, call.from_user.first_name)
+        if users_db[user_id].get('balance', 0.0) < selected_prod['price']:
             bot.answer_callback_query(call.id, "رصيدك غير كافٍ!", show_alert=True)
             bot.send_message(call.message.chat.id, "❌ عذراً، رصيدك غير كافي.")
             return
@@ -914,7 +928,8 @@ def handle_callbacks(call):
                 return
             o_info = user_temp_order[user_id]
             
-            user_balance = users_db.get(user_id, {}).get('balance', 0.0)
+            check_user_exists(user_id, call.from_user.first_name)
+            user_balance = users_db[user_id].get('balance', 0.0)
             if user_balance < o_info['price']:
                 bot.answer_callback_query(call.id, "رصيدك غير كافٍ!", show_alert=True)
                 return
@@ -942,7 +957,6 @@ def handle_callbacks(call):
                 del user_temp_order[user_id]
             bot.answer_callback_query(call.id, "تم الإلغاء بنجاح.")
             
-            # إعادة التوجيه إلى قسم Jawaker عند الضغط على لا ❌
             markup_jw = types.InlineKeyboardMarkup()
             markup_jw.add(types.InlineKeyboardButton("سيرفر 1 🪙", callback_data="jw_srv1"))
             markup_jw.add(types.InlineKeyboardButton("سيرفر 2 🪙", callback_data="jw_srv2"))
@@ -954,47 +968,30 @@ def handle_callbacks(call):
 
     elif data.startswith('approve_topup_'):
         if user_id != ADMIN_ID: return
-        parts = data.split('_')
-        target_id, amount = int(parts[2]), float(parts[3])
-        if target_id not in users_db:
-            users_db[target_id] = {'name': 'مستخدم', 'balance': 0.0, 'spent': 0.0, 'orders_count': 0, 'banned': False, 'currency': 'USD', 'topup_history': [], 'orders_history': []}
-        users_db[target_id]['balance'] += amount
-        users_db[target_id]['topup_history'].append(f"تعبئة رصيد ناجحة: +${amount}")
-        bot.answer_callback_query(call.id, "تمت الموافقة بنجاح!")
-        bot.edit_message_text(f"{call.message.text}\n\n✅ **الحالة:** تم قبول الطلب.", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode='Markdown')
+        target_id = int(data.split('_')[2])
+        if target_id not in pending_topup:
+            bot.answer_callback_query(call.id, "انتهت بيانات الطلب المؤقتة، لكن يمكنك إضافته يدوياً.")
+            return
+
+        t_data = pending_topup[target_id]
+        amount_usd = t_data['amount_usd']
+        amount_display = t_data['amount_display']
+
+        check_user_exists(target_id)
+        users_db[target_id]['balance'] += amount_usd
+        users_db[target_id]['topup_history'].append(f"تعبئة رصيد ناجحة ({t_data['method_name']}): +{amount_display}")
+        
+        bot.answer_callback_query(call.id, "تمت الموافقة بنجاح وإضافة الرصيد للعميل!")
+        bot.edit_message_text(f"{call.message.text}\n\n✅ **الحالة:** تم قبول الطلب وإضافة الرصيد.", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode='Markdown')
+        
+        del pending_topup[target_id]
         try:
-            bot.send_message(target_id, f"✅ تمت الموافقة على تعبئة رصيدك وإضافة مبلغ {amount}$ بنجاح!")
+            bot.send_message(target_id, f"✅ تمت الموافقة على طلب تعبئة رصيدك ({amount_display}) وإضافته لحسابك بنجاح!")
         except Exception:
             pass
 
     elif data.startswith('reject_topup_'):
         if user_id != ADMIN_ID: return
         target_id = int(data.split('_')[2])
-        if target_id in users_db:
-            users_db[target_id]['topup_history'].append("رفض طلب تعبئة رصيد")
-        bot.answer_callback_query(call.id, "تم رفض الطلب.")
-        bot.edit_message_text(f"{call.message.text}\n\n❌ **الحالة:** تم رفض الطلب.", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode='Markdown')
-        try:
-            bot.send_message(target_id, "❌ عذراً، تم رفض طلب تعبئة الرصيد.")
-        except Exception:
-            pass
-
-    elif data == 'top_up_balance':
-        show_topup_methods(call.message)
-
-app = Flask('')
-
-@app.route('/')
-def home():
-    return "Bot is running 24/7 successfully!"
-
-def run():
-    app.run(host='0.0.0.0', port=10000)
-
-def keep_alive():
-    t = Thread(target=run)
-    t.start()
-
-if __name__ == "__main__":
-    keep_alive()
-    bot.infinity_polling(skip_pending=True)
+        if target_id in pending_topup:
+           
