@@ -251,7 +251,6 @@ def handle_text_messages(message):
     if user_id in users_db and users_db[user_id]['banned']:
         return
 
-    # معالجة إدخال كمية جواكر
     if user_id in user_temp_order and user_temp_order[user_id].get('waiting_jawaker_qty'):
         try:
             qty = int(message.text.strip())
@@ -273,7 +272,6 @@ def handle_text_messages(message):
             bot.reply_to(message, "⚠️ يرجى إرسال رقم صحيح للكمية:")
             return
 
-    # معالجة إدخال آيدي جواكر
     if user_id in user_temp_order and user_temp_order[user_id].get('waiting_jawaker_id'):
         pid = message.text.strip()
         user_temp_order[user_id]['player_id'] = pid
@@ -286,7 +284,6 @@ def handle_text_messages(message):
         bot.send_message(message.chat.id, f"📋 **ملخص الطلب:**\n▫️ الخدمة: {o_info['product_name']}\n▫️ الكمية: {o_info['quantity']:,} توكنز\n▫️ السعر الإجمالي: {format_price(user_id, o_info['price'])}\n▫️ الآيدي: `{o_info['player_id']}`\n\n❓ **هل تريد إكمال طلبك؟**", parse_mode="Markdown", reply_markup=markup_conf)
         return
 
-    # معالجة إدخال الآيدي للخدمات العادية
     if user_id in user_temp_order and user_temp_order[user_id].get('waiting_player_id'):
         pid = message.text.strip()
         user_temp_order[user_id]['player_id'] = pid
@@ -688,12 +685,13 @@ def handle_callbacks(call):
     elif data == 'topup_confirm_no':
         if user_id in pending_topup:
             del pending_topup[user_id]
-        bot.answer_callback_query(call.id, "تم الإلغاء والإرجاع إلى القائمة.")
+        bot.answer_callback_query(call.id, "تم الإلغاء والعودة للرئيسية.")
         try:
             bot.delete_message(call.message.chat.id, call.message.message_id)
         except Exception:
             pass
-        show_topup_methods(call.message)
+        # العودة للواجهة الأساسية
+        show_main_menu(call.message.chat.id, call.from_user.first_name, user_id)
         return
 
     elif data.startswith('cat_'):
@@ -868,7 +866,8 @@ def handle_callbacks(call):
         else:
             if user_id in user_temp_code:
                 del user_temp_code[user_id]
-            bot.answer_callback_query(call.id, "تم الإلغاء.")
+            bot.answer_callback_query(call.id, "تم الإلغاء والعودة للرئيسية.")
+            show_main_menu(call.message.chat.id, call.from_user.first_name, user_id)
         return
 
     elif data.startswith('buyprod_'):
@@ -940,15 +939,10 @@ def handle_callbacks(call):
         else:
             if user_id in user_temp_order: 
                 del user_temp_order[user_id]
-            bot.answer_callback_query(call.id, "تم الإلغاء بنجاح.")
+            bot.answer_callback_query(call.id, "تم إلغاء الطلب والعودة للرئيسية.")
             
-            markup_jw = types.InlineKeyboardMarkup()
-            markup_jw.add(types.InlineKeyboardButton("سيرفر 1 🪙", callback_data="jw_srv1"))
-            markup_jw.add(types.InlineKeyboardButton("سيرفر 2 🪙", callback_data="jw_srv2"))
-            markup_jw.add(types.InlineKeyboardButton("زر عرض الاسبوعي 💳", callback_data="buyprod_1259"))
-            markup_jw.add(types.InlineKeyboardButton("مسرعات 🚀", callback_data="jw_speeds"))
-            markup_jw.add(types.InlineKeyboardButton("باقات جاهزة 💳", callback_data="buyprod_108"))
-            bot.send_message(call.message.chat.id, "❌ تم إلغاء الطلب.\n\n🂡 **قسم شحن Jawaker**\nاختر القسم المناسب ⏬", reply_markup=markup_jw)
+            # العودة مباشرة إلى الواجهة الرئيسية
+            show_main_menu(call.message.chat.id, call.from_user.first_name, user_id)
         return
 
     elif data.startswith('approve_topup_'):
@@ -988,7 +982,6 @@ def handle_callbacks(call):
         except Exception:
             pass
 
-# تشغيل البوت باستخدام Flask و Threading لضمان الاستقرار
 app = Flask('')
 
 @app.route('/')
