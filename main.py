@@ -830,13 +830,13 @@ def handle_callbacks(call):
         for g_name, g_content in all_games.items():
             for sub_name, plist in g_content.items():
                 if sub_name == "اكواد 📱": continue
-                selected_prod = next((p for p in plist if p['id'] == prod_id), None)
+                selected_prod = next((p for p in plist if p.get('id') == prod_id), None)
                 if selected_prod: break
             if selected_prod: break
             
         if not selected_prod:
             other_list = store_categories["🎮 شحن ألعاب"]["Jawaker 🕹"]["خدمات أخرى 💳"]
-            selected_prod = next((p for p in other_list if p['id'] == prod_id), None)
+            selected_prod = next((p for p in other_list if p.get('id') == prod_id), None)
                 
         if not selected_prod:
             bot.answer_callback_query(call.id, "المنتج غير موجود.")
