@@ -4,7 +4,6 @@ import telebot
 from telebot import types
 from flask import Flask
 
-# استيراد المتغيرات والدوال من ملف database.py
 from database import (
     ADMIN_ID, ADMIN_USERNAME, CHANNEL_USERNAME,
     users_db, total_orders_global, exchange_rate,
