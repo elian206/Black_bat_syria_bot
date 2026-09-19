@@ -1,10 +1,14 @@
+import re
+from threading import Thread
 import telebot
 from telebot import types
 from flask import Flask
-from threading import Thread
-import requests
-import uuid
-import re
+
+from database import (
+    ADMIN_ID, ADMIN_USERNAME, CHANNEL_USERNAME,
+    users_db, total_orders_global, exchange_rate,
+    format_price, create_mhd_order, create_mhd_code_order, check_mhd_order_status
+)
 
 TOKEN = '8909052904:AAHEsWa85CbV5Kwxs4Y1kG7h7TMtHpx-TMw'
 bot = telebot.TeleBot(TOKEN)
@@ -14,17 +18,11 @@ try:
 except Exception:
     pass
 
-ADMIN_ID = 8534087775
-ADMIN_USERNAME = "black_bat_s"
-CHANNEL_USERNAME = '@black1_bat_syria'
-
-API_BASE = "https://mhd-game.com/api"
-API_TOKEN = "Fluf9aJYBrtQ1a9ywuqrcMh2M4A8UIa8MKsgbyUk0PkYi301WuCqtLtGn4GO"
-api_headers = {"api-token": API_TOKEN}
-
-users_db = {}
-total_orders_global = 0  
-exchange_rate = 15000  
+pending_topup = {}
+admin_states = {}
+user_temp_order = {}
+user_temp_code = {}
+bot_is_active = True
 
 store_categories = {
     "🎮 شحن ألعاب": {
@@ -118,53 +116,6 @@ store_categories = {
     "🛡 دعم حسابات": {}
 }
 
-pending_topup = {}
-admin_states = {}
-user_temp_order = {}
-user_temp_code = {}
-bot_is_active = True
-
-def format_price(user_id, price_in_usd):
-    curr = users_db.get(user_id, {}).get('currency', 'USD')
-    if curr == 'SYP':
-        syp_amount = price_in_usd * exchange_rate
-        return f"{syp_amount:,.0f} ل.س"
-    else:
-        return f"${price_in_usd}"
-
-def create_mhd_order(product_id, quantity, player_id):
-    try:
-        unique_order_uuid = str(uuid.uuid4())
-        url = f"{API_BASE}/client/api/newOrder/{product_id}/params"
-        params = {"qty": quantity, "playerId": player_id, "order_uuid": unique_order_uuid}
-        response = requests.get(url, headers=api_headers, params=params)
-        res_json = response.json()
-        res_json['order_uuid'] = unique_order_uuid
-        return res_json
-    except Exception as e:
-        return {"status": "ERROR", "message": str(e)}
-
-def create_mhd_code_order(product_id, quantity=1):
-    try:
-        unique_order_uuid = str(uuid.uuid4())
-        url = f"{API_BASE}/client/api/newOrder/{product_id}/params"
-        params = {"qty": quantity, "order_uuid": unique_order_uuid}
-        response = requests.get(url, headers=api_headers, params=params)
-        res_json = response.json()
-        res_json['order_uuid'] = unique_order_uuid
-        return res_json
-    except Exception as e:
-        return {"status": "ERROR", "message": str(e)}
-
-def check_mhd_order_status(order_uuid):
-    try:
-        url = f"{API_BASE}/client/api/orderStatus"
-        params = {"order_uuid": order_uuid}
-        response = requests.get(url, headers=api_headers, params=params)
-        return response.json()
-    except Exception as e:
-        return {"status": "ERROR", "message": str(e)}
-
 def check_subscription(user_id):
     try:
         member = bot.get_chat_member(CHANNEL_USERNAME, user_id)
@@ -242,7 +193,7 @@ def verify_sub(call):
 
 @bot.message_handler(func=lambda message: True)
 def handle_text_messages(message):
-    global exchange_rate, bot_is_active, total_orders_global
+    global bot_is_active, total_orders_global
     user_id = message.from_user.id
     
     if not bot_is_active and user_id != ADMIN_ID:
@@ -251,7 +202,6 @@ def handle_text_messages(message):
     if user_id in users_db and users_db[user_id]['banned']:
         return
 
-    # معالجة إدخال كمية جواكر
     if user_id in user_temp_order and user_temp_order[user_id].get('waiting_jawaker_qty'):
         try:
             qty = int(message.text.strip())
@@ -273,7 +223,6 @@ def handle_text_messages(message):
             bot.reply_to(message, "⚠️ يرجى إرسال رقم صحيح للكمية:")
             return
 
-    # معالجة إدخال آيدي جواكر
     if user_id in user_temp_order and user_temp_order[user_id].get('waiting_jawaker_id'):
         pid = message.text.strip()
         user_temp_order[user_id]['player_id'] = pid
@@ -286,7 +235,6 @@ def handle_text_messages(message):
         bot.send_message(message.chat.id, f"📋 **ملخص الطلب:**\n▫️ الخدمة: {o_info['product_name']}\n▫️ الكمية: {o_info['quantity']:,} توكنز\n▫️ السعر الإجمالي: {format_price(user_id, o_info['price'])}\n▫️ الآيدي: `{o_info['player_id']}`\n\n❓ **هل تريد إكمال طلبك؟**", parse_mode="Markdown", reply_markup=markup_conf)
         return
 
-    # معالجة إدخال الآيدي للخدمات العادية
     if user_id in user_temp_order and user_temp_order[user_id].get('waiting_player_id'):
         pid = message.text.strip()
         user_temp_order[user_id]['player_id'] = pid
@@ -305,9 +253,10 @@ def handle_text_messages(message):
             try:
                 numbers = re.findall(r'\d+', message.text.strip())
                 if numbers:
-                    exchange_rate = int(''.join(numbers))
+                    import database
+                    database.exchange_rate = int(''.join(numbers))
                     admin_states.clear()
-                    bot.reply_to(message, f"✅ تم تحديث سعر الصرف بنجاح: {exchange_rate:,} ل.س")
+                    bot.reply_to(message, f"✅ تم تحديث سعر الصرف بنجاح: {database.exchange_rate:,} ل.س")
                     show_admin_panel(message)
                     return
             except Exception:
@@ -491,7 +440,7 @@ def show_admin_panel(message):
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
-    global bot_is_active, exchange_rate, total_orders_global
+    global bot_is_active, total_orders_global
     data = call.data
     user_id = call.from_user.id
     
@@ -535,8 +484,8 @@ def handle_callbacks(call):
             return
         bot.answer_callback_query(call.id, "جاري إرسال كود البوت...")
         try:
-            with open(__file__, 'rb') as f:
-                bot.send_document(call.message.chat.id, f, caption="💻 تفضل ملف كود البوت الحالي.")
+            with open('main.py', 'rb') as f:
+                bot.send_document(call.message.chat.id, f, caption="💻 تفضل ملف كود البوت الرئيسي.")
         except Exception as e:
             bot.send_message(call.message.chat.id, f"❌ حدث خطأ أثناء إرسال الكود: {e}")
         return
@@ -688,12 +637,12 @@ def handle_callbacks(call):
     elif data == 'topup_confirm_no':
         if user_id in pending_topup:
             del pending_topup[user_id]
-        bot.answer_callback_query(call.id, "تم الإلغاء والإرجاع إلى القائمة.")
+        bot.answer_callback_query(call.id, "تم الإلغاء والعودة للرئيسية.")
         try:
             bot.delete_message(call.message.chat.id, call.message.message_id)
         except Exception:
             pass
-        show_topup_methods(call.message)
+        show_main_menu(call.message.chat.id, call.from_user.first_name, user_id)
         return
 
     elif data.startswith('cat_'):
@@ -857,6 +806,7 @@ def handle_callbacks(call):
                 uuid_val = response.get("order_uuid")
                 code_content = response.get("code") or response.get("message") or "تم تسليم الكود بنجاح"
                 users_db[user_id]['orders_history'].append({"name": code_info['product_name'], "player_id": "كود", "uuid": uuid_val, "status": f"الكود: {code_content}", "is_code": True})
+                global total_orders_global
                 total_orders_global += 1
                 bot.send_message(call.message.chat.id, f"✅ **تم شراء الكود بنجاح!**\n🔑 الكود:\n`{code_content}`", parse_mode="Markdown")
             else:
@@ -868,7 +818,8 @@ def handle_callbacks(call):
         else:
             if user_id in user_temp_code:
                 del user_temp_code[user_id]
-            bot.answer_callback_query(call.id, "تم الإلغاء.")
+            bot.answer_callback_query(call.id, "تم الإلغاء والعودة للرئيسية.")
+            show_main_menu(call.message.chat.id, call.from_user.first_name, user_id)
         return
 
     elif data.startswith('buyprod_'):
@@ -928,8 +879,9 @@ def handle_callbacks(call):
             response = create_mhd_order(product_id=o_info['product_id'], quantity=qty_val, player_id=o_info['player_id'])
 
             if response and response.get("status") == "OK":
-                users_db[user_id]['orders_history'].append({"name": o_info['product_name'], "player_id": o_info['player_id'], "uuid": response.get("order_uuid"), "status": "قيد التنفيذ", "is_code": False})
+                global total_orders_global
                 total_orders_global += 1
+                users_db[user_id]['orders_history'].append({"name": o_info['product_name'], "player_id": o_info['player_id'], "uuid": response.get("order_uuid"), "status": "قيد التنفيذ", "is_code": False})
                 bot.send_message(call.message.chat.id, "✅ تم تنفيذ طلبك بنجاح 🤝")
             else:
                 users_db[user_id]['balance'] += o_info['price']
@@ -940,43 +892,58 @@ def handle_callbacks(call):
         else:
             if user_id in user_temp_order: 
                 del user_temp_order[user_id]
-            bot.answer_callback_query(call.id, "تم الإلغاء بنجاح.")
-            
-            # إعادة التوجيه إلى قسم Jawaker عند الضغط على لا ❌
-            markup_jw = types.InlineKeyboardMarkup()
-            markup_jw.add(types.InlineKeyboardButton("سيرفر 1 🪙", callback_data="jw_srv1"))
-            markup_jw.add(types.InlineKeyboardButton("سيرفر 2 🪙", callback_data="jw_srv2"))
-            markup_jw.add(types.InlineKeyboardButton("زر عرض الاسبوعي 💳", callback_data="buyprod_1259"))
-            markup_jw.add(types.InlineKeyboardButton("مسرعات 🚀", callback_data="jw_speeds"))
-            markup_jw.add(types.InlineKeyboardButton("باقات جاهزة 💳", callback_data="buyprod_108"))
-            bot.send_message(call.message.chat.id, "❌ تم إلغاء الطلب.\n\n🂡 **قسم شحن Jawaker**\nاختر القسم المناسب ⏬", reply_markup=markup_jw)
+            bot.answer_callback_query(call.id, "تم إلغاء الطلب والعودة للرئيسية.")
+            show_main_menu(call.message.chat.id, call.from_user.first_name, user_id)
         return
 
     elif data.startswith('approve_topup_'):
         if user_id != ADMIN_ID: return
         parts = data.split('_')
-        target_id, amount = int(parts[2]), float(parts[3])
+        target_id = int(parts[2])
+        raw_amount = float(parts[3])
+        curr_type = parts[4] if len(parts) > 4 else 'USD'
+        
         if target_id not in users_db:
             users_db[target_id] = {'name': 'مستخدم', 'balance': 0.0, 'spent': 0.0, 'orders_count': 0, 'banned': False, 'currency': 'USD', 'topup_history': [], 'orders_history': []}
-        users_db[target_id]['balance'] += amount
-        users_db[target_id]['topup_history'].append(f"تعبئة رصيد ناجحة: +${amount}")
+        
+        if curr_type == 'SYP':
+            amount_in_usd = raw_amount / exchange_rate
+            display_amount_msg = f"{raw_amount:,.0f} ل.س (ما يعادل ${amount_in_usd:.2f})"
+        else:
+            amount_in_usd = raw_amount
+            display_amount_msg = f"${amount_in_usd}"
+
+        users_db[target_id]['balance'] += amount_in_usd
+        users_db[target_id]['topup_history'].append(f"تعبئة رصيد ناجحة: +${amount_in_usd:.2f} ({display_amount_msg})")
+        
         bot.answer_callback_query(call.id, "تمت الموافقة بنجاح!")
-        bot.edit_message_text(f"{call.message.text}\n\n✅ **الحالة:** تم قبول الطلب.", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode='Markdown')
+        bot.edit_message_text(f"{call.message.text}\n\n✅ **الحالة:** تم قبول الطلب وإضافة الرصيد.", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode='Markdown')
         try:
-            bot.send_message(target_id, f"✅ تمت الموافقة على تعبئة رصيدك وإضافة مبلغ {amount}$ بنجاح!")
+            bot.send_message(target_id, f"✅ تمت الموافقة على تعبئة رصيدك وإضافة مبلغ ({display_amount_msg}) بنجاح!")
         except Exception:
             pass
 
     elif data.startswith('reject_topup_'):
         if user_id != ADMIN_ID: return
         target_id = int(data.split('_')[2])
-        if target_id in users_db:
-            users_db[target_id]['topup_history'].append("رفض طلب تعبئة رصيد")
         bot.answer_callback_query(call.id, "تم رفض الطلب.")
         bot.edit_message_text(f"{call.message.text}\n\n❌ **الحالة:** تم رفض الطلب.", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode='Markdown')
         try:
-            bot.send_message(target_id, "❌ عذراً، تم رفض طلب تعبئة الرصيد.")
+            bot.send_message(target_id, "❌ عذراً، تم رفض طلب تعبئة الرصيد من قبل الإدارة. يرجى التأكد من رقم العملية أو التواصل مع الدعم.")
         except Exception:
             pass
 
-    elif data
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run_flask():
+    app.run(host='0.0.0.0', port=8080)
+
+if __name__ == "__main__":
+    t = Thread(target=run_flask)
+    t.start()
+    print("Bot is starting...")
+    bot.infinity_polling()
